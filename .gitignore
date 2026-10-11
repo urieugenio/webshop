@@ -1,0 +1,21 @@
+# Dependencies (restored with "npm install")
+node_modules/
+
+# Secrets: Cloudflare / Stripe tokens. Never commit these.
+.env
+.env.*
+!.env.example
+
+# Build output and cache live in ..\build, content in ..\content.
+# These lines are a safety net in case anything ends up inside the repo.
+dist/
+.cache/
+build/
+cache/
+
+# OS / editor clutter
+Thumbs.db
+desktop.ini
+.DS_Store
+*.log
+~$*

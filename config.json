@@ -1,0 +1,104 @@
+{
+  "sourcesDir": "../content/sources",
+  "outDir": "../build/dist",
+  "cacheDir": "../build/cache",
+
+  "site": {
+    "title": "Uri Eugenio — exclusive handmade crochet",
+    "description": "Exclusive handmade crochet by Uri Eugenio. One of a kind pieces, hand-dyed merino wool.",
+    "lang": "en",
+    "tagline": "exclusive handmade crochet",
+    "taglineBy": "by",
+    "contact": {
+      "name": "Uri Eugenio",
+      "email": "uri@uri.eu",
+      "instagram": "urieugenio",
+      "website": "https://uri.eu",
+      "websiteText": "dance videos and many more pictures"
+    }
+  },
+
+  "content": {
+    "folder": "content",
+    "imageWidths": [480, 820, 1240, 1640],
+    "landscapeMinAspect": 1.1,
+    "cropAspect": 1.5,
+    "cropPosition": "north",
+    "imageQuality": 82
+  },
+
+  "logo": {
+    "file": "logo.svg",
+    "removeClasses": [],
+    "trimToContent": false,
+    "landscapeWidthAt16x9": 0.62,
+    "portraitWidthAt9x16": 0.85,
+    "taglineTop": 0.10,
+    "taglineWidthOfLogo": 0.55
+  },
+
+  "theme": {
+    "bg": "#131313",
+    "surface": "#252526",
+    "line": "#3c3c3c",
+    "text": "#efefef",
+    "muted": "#8f8f8f",
+    "accent": "#ffc902",
+    "accentText": "#131313",
+    "embossLight": "rgba(255,255,255,0.10)",
+    "embossDark": "rgba(0,0,0,0.60)",
+    "imageShadow": "none",
+    "thumbBorder": "#222"
+  },
+
+  "layout": {
+    "sideMargin": 40,
+    "sideMarginPhone": 4,
+    "phoneBreakpoint": 600,
+    "phoneColumns": 3,
+    "minThumbWidth": 210,
+    "gap": 10,
+    "border": 1,
+    "galleryRowScale": 1.15,
+    "contentWidth": 920
+  },
+
+  "thumbs": {
+    "collection": { "tileSizes": [256, 512], "tilesPerRow": 4, "fit": "cover" },
+    "gallery":    { "tileSizes": [320, 640], "tilesPerRow": 4, "fit": "fill" },
+    "pad": 2,
+    "quality": 82,
+    "sharpen": true,
+    "lazyMargin": 800
+  },
+
+  "detail": {
+    "widths": [720, 1080, 1600, 2400],
+    "quality": 85
+  },
+
+  "splash": {
+    "folder": "splash",
+    "aspects": ["32:9", "24:9", "16:9", "4:3", "3:4", "9:16"],
+    "frame": [7680, 2160],
+    "frameScales": [1, 0.6667, 0.5, 0.25],
+    "quality": 80,
+    "slideSeconds": 7,
+    "fadeSeconds": 1.6
+  },
+
+  "animation": {
+    "paneSeconds": 1.0,
+    "ease": "cubic-bezier(0.215, 0.61, 0.355, 1)",
+    "menuSeconds": 0.5
+  },
+
+  "shop": {
+    "currency": "EUR",
+    "locale": "nl-NL",
+    "liveInventory": false,
+    "apiBase": "",
+    "pollSeconds": 60,
+    "previewSoldIds": ["DSC01460", "DSC01475", "DSC01499"]
+  }
+}
