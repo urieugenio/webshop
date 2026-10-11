@@ -117,6 +117,8 @@
     }
   },
 
+  "filters": ["price", "size", "model", "thickness"],
+
   "shop": {
     "currency": "EUR",
     "locale": "nl-NL",

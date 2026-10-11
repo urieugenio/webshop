@@ -120,9 +120,10 @@ main,.footer{max-width:calc(var(--page-max) + 2*var(--margin));margin:0 auto;pad
 }
 
 /* ---------------------------------------------------------------- collection filters */
-/* colour dots (one at a time), then a pulldown for price and size */
+/* colour dots (one at a time) on their own row, the pulldowns below them */
 .filters{display:flex;flex-wrap:wrap;align-items:center;gap:14px 28px;margin-bottom:22px;font-size:13px}
 .filters .fgroup{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.filters .fgroup[role=radiogroup]{flex-basis:100%}
 .filters .flabel{color:var(--muted);letter-spacing:.12em;margin-right:4px}
 .filters .fsel{appearance:none;-webkit-appearance:none;font:inherit;letter-spacing:.06em;color:var(--text);background:var(--bg) no-repeat right 10px center/10px 6px;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238f8f8f' stroke-width='1.5'/%3E%3C/svg%3E");

@@ -459,7 +459,6 @@
       const sold = Shop.sold.has(it.id);
       const inCart = Cart.has(it.id);
       const rows = (S.attrs || []).filter((a) => it[a.key] != null && it[a.key] !== '').map((a) => [a.label, it[a.key]]);
-      if (it.color) rows.push(['colour', it.multi ? `${it.color}, ${S.colors.multiLabel}` : it.color]);
       this.info.innerHTML = `
         <p class="ref">${esc(label(it))}</p>
         <p class="price">${it.price != null ? money(it.price) : ''}${sold ? '<span class="sold-tag">sold</span>' : ''}</p>
@@ -488,7 +487,8 @@
 
   // ============================================================ collection filters
   // One colour at a time: the colour dots work like radio buttons ("multicolour" shows the multicoloured pieces);
-  // clicking the chosen dot again shows all colours. Price and every other attribute get a pulldown.
+  // clicking the chosen dot again shows all colours. Below them, the attributes in config.json "filters" get a
+  // pulldown with the values pieces have (in the order of attributes.txt); one value only means no pulldown.
   // A piece is shown when it matches the colour and every pulldown.
   const MULTI = '*multi';
   const Filter = {
@@ -509,18 +509,17 @@
       const dots = (S.colors?.palette || []).map((p) => dot(p.name, 'sw', p.name, p.hex, !colours.has(p.name)));
       dots.push(dot(MULTI, 'sw multi', S.colors.multiLabel, null, !items.some((it) => it.multi)));
       if (dots.length > 1) html += `<div class="fgroup" role="radiogroup" aria-label="colour"><span class="flabel">colour</span>${dots.join('')}</div>`;
-      // pulldowns: price from low to high, other attributes in the order of attributes.txt
+      // pulldowns, in the order of config.json "filters"; prices from low to high
       this.lists = {};
-      const pulldown = (key, label, values, fmt) => {
-        if (values.length < 2) return;
-        this.lists[key] = values;
-        html += `<label class="fgroup"><span class="flabel">${esc(label)}</span><select class="fsel" data-key="${esc(key)}">` +
+      for (const f of S.filters || []) {
+        const have = present(f.key);
+        const values = f.values.filter((v) => have.has(v)).concat([...have].filter((v) => !f.values.includes(v)));
+        if (f.key === 'price') values.sort((a, b) => a - b);
+        if (values.length < 2) continue;
+        this.lists[f.key] = values;
+        const fmt = f.key === 'price' ? money : String;
+        html += `<label class="fgroup"><span class="flabel">${esc(f.label)}</span><select class="fsel" data-key="${esc(f.key)}">` +
           `<option value="">all</option>${values.map((v, i) => `<option value="${i}">${esc(fmt(v))}</option>`).join('')}</select></label>`;
-      };
-      pulldown('price', 'price', [...present('price')].sort((a, b) => a - b), money);
-      for (const a of S.attrs || []) {
-        const vals = present(a.key);
-        pulldown(a.key, a.label, (a.values || []).filter((v) => vals.has(v)).concat([...vals].filter((v) => !(a.values || []).includes(v))), String);
       }
       if (!html) return;
       this.bar.innerHTML = html + '<div class="fstatus" hidden><span class="fcount"></span><button type="button" class="fclear">show all</button></div>';

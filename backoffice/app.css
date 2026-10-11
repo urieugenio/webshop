@@ -34,6 +34,8 @@ button,input,select{font:inherit;color:inherit}
 .filters .n{color:var(--muted)}
 .filters button.zero{opacity:.55}
 .filter-count{color:var(--muted);font-size:12px;margin-left:6px}
+.filters .fsel{padding:4px 8px;border:1px solid var(--line);border-radius:14px;background:var(--surface);font-size:12px;cursor:pointer}
+.filters .fsel.on{border-color:var(--accent);color:var(--accent)}
 .tile.drag{transform:rotate(2deg)}
 
 .detail{padding:0;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--text);max-width:min(860px,calc(100vw - 32px))}

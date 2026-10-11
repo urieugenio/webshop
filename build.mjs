@@ -349,7 +349,10 @@ function loadCollection(files) {
     palette: (cfg.colors?.palette || []).map((p) => ({ name: p.name, hex: p.hex })),
     multiLabel: cfg.colors?.multiLabel || 'multicolour',
   };
-  return { files: sorted, catalog, colors, attrs: attrs.filter((a) => a.key !== 'price').map((a) => ({ key: a.key, label: a.label, values: a.values })) };
+  // the pulldowns of the site's filter bar (config.json "filters"), each with every value of attributes.txt
+  const filters = (cfg.filters || []).map((k) => attrs.find((a) => a.key === k)).filter(Boolean)
+    .map((a) => ({ key: a.key, label: a.label, values: a.values }));
+  return { files: sorted, catalog, colors, filters, attrs: attrs.filter((a) => a.key !== 'price').map((a) => ({ key: a.key, label: a.label })) };
 }
 
 // ---------------------------------------------------------------- static assets
@@ -529,7 +532,7 @@ async function main() {
     layout: cfg.layout, thumbs: { lazyMargin: cfg.thumbs.lazyMargin }, splash: { slideSeconds: cfg.splash.slideSeconds, fadeSeconds: cfg.splash.fadeSeconds },
     animation: cfg.animation, shop: cfg.shop, theme: cfg.theme,
   };
-  const data = { config: publicCfg, splash, attrs: coll.attrs, colors: coll.colors, collection: collection.items, gallery: gallery.items,
+  const data = { config: publicCfg, splash, attrs: coll.attrs, colors: coll.colors, filters: coll.filters, collection: collection.items, gallery: gallery.items,
     sheets: { collection: collection.sheets, gallery: gallery.sheets } };
   const dataJs = `window.SITE=${JSON.stringify(data)};\n`;
   const dataName = `data/site-${sha(dataJs, 8)}.js`;

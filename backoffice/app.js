@@ -13,6 +13,7 @@
   let measured = null;    // a new measurement of the piece in the detail view, applied when it closes
   const MULTI = '*multi';
   let filterColor = null; // palette name, MULTI or null (all)
+  const picks = {};       // attribute key -> chosen value
 
   const slugify = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '')
     .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
@@ -81,9 +82,12 @@
     renderFilters();
   }
 
-  // ------------------------------------------------------------ colour filter
-  // one colour at a time, like radio buttons; "multicolour" shows the multicoloured pieces
-  const matches = (it) => (filterColor === MULTI ? !!it.multi : !filterColor || it.color === filterColor);
+  // ------------------------------------------------------------ filter
+  // one colour at a time, like radio buttons ("multicolour" shows the multicoloured pieces), and a pulldown for
+  // every attribute; a piece is shown when it matches all of them
+  const matches = (it) => (filterColor === MULTI ? !!it.multi : !filterColor || it.color === filterColor)
+    && Object.entries(picks).every(([k, v]) => it[k] === v);
+  const filtering = () => !!filterColor || Object.keys(picks).length > 0;
 
   function renderFilters() {
     const count = (fn) => S.items.filter(fn).length;
@@ -102,8 +106,25 @@
     const parts = S.palette.map((p) => btn(
       [dot(p.name, false), p.name], filterColor === p.name, count((it) => it.color === p.name), choose(p.name), `show only ${p.name}`));
     parts.push(btn([dot(null, true), S.multiLabel], filterColor === MULTI, count((it) => it.multi), choose(MULTI), `show only ${S.multiLabel} pieces`));
-    if (filterColor) {
-      parts.push(btn(['show all'], false, null, () => { filterColor = null; }, 'clear the filter'));
+    for (const a of S.attrs) {
+      // every value of attributes.txt, plus values pieces still have that are no longer listed there
+      const values = a.values.concat([...new Set(S.items.map((it) => it[a.key]))].filter((v) => v != null && v !== '' && !a.values.includes(v)));
+      const sel = document.createElement('select');
+      sel.className = 'fsel' + (a.key in picks ? ' on' : '');
+      sel.title = `filter on ${a.label}`;
+      sel.append(new Option(`all ${a.label}`, ''), ...values.map((v, i) => {
+        const o = new Option(`${fmt(a, v)} (${count((it) => it[a.key] === v)})`, String(i));
+        o.selected = a.key in picks && picks[a.key] === v;
+        return o;
+      }));
+      sel.addEventListener('change', () => {
+        if (sel.value === '') delete picks[a.key]; else picks[a.key] = values[sel.value];
+        applyFilter();
+      });
+      parts.push(sel);
+    }
+    if (filtering()) {
+      parts.push(btn(['show all'], false, null, () => { filterColor = null; for (const k in picks) delete picks[k]; }, 'clear the filter'));
       const shown = document.createElement('span');
       shown.className = 'filter-count';
       shown.textContent = `${count(matches)} shown`;
