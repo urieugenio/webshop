@@ -131,7 +131,7 @@
           b.setAttribute('aria-label', label(it));
           b.innerHTML = '<span class="ti"></span>' + (key === 'collection' ? '<span class="sold-band">sold</span>' : '');
           b.addEventListener('click', () => Detail.open(key, i, true));
-          frag.appendChild(b);
+          frag.appendChild(key === 'collection' ? this.cell(b, it, i) : b);
           sec.thumbs.push(b);
         });
         el.appendChild(frag);
@@ -141,6 +141,26 @@
       }, { rootMargin: `${C.thumbs.lazyMargin}px 0px` });
       this.layout();
       addEventListener('resize', debounce(() => this.layout(), 120));
+    },
+    /** collection: the thumb plus a caption below it: colour dot, name and (on the right) price */
+    cell(b, it, i) {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      const cap = document.createElement('div');
+      cap.className = 'cap';
+      cap.setAttribute('aria-hidden', 'true'); // the thumb button already carries the name
+      cap.innerHTML = '<span class="dot"></span><span class="nm"></span><span class="pr"></span>';
+      const dot = $('.dot', cap);
+      const hex = (S.colors?.palette || []).find((p) => p.name === it.color)?.hex;
+      if (hex) dot.style.setProperty('--sw', hex);
+      if (it.multi) dot.classList.add('multi');
+      if (!hex && !it.multi) dot.remove();
+      $('.nm', cap).textContent = label(it);
+      $('.pr', cap).textContent = money(it.price);
+      cap.addEventListener('click', () => Detail.open('collection', i, true));
+      cell.append(b, cap);
+      b._cell = cell;
+      return cell;
     },
     columns(width) {
       if (width < L.phoneBreakpoint) return L.phoneColumns;
@@ -531,7 +551,7 @@
     apply() {
       const sec = Grid.sections.collection;
       let n = 0;
-      sec.thumbs.forEach((t, i) => { const ok = this.match(sec.items[i]); t.hidden = !ok; n += ok; });
+      sec.thumbs.forEach((t, i) => { const ok = this.match(sec.items[i]); (t._cell || t).hidden = !ok; n += ok; });
       for (const b of $$('button[data-color]', this.bar)) b.setAttribute('aria-checked', b.dataset.color === this.color);
       $('.fstatus', this.bar).hidden = !this.color && !Object.keys(this.pick).length;
       $('.fcount', this.bar).textContent = `${n} of ${sec.items.length}`;
