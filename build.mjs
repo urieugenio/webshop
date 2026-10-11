@@ -330,19 +330,26 @@ function loadCollection(files) {
   const { items, added, orphans } = mergeCollection(readCollection(SRC), files.map((f) => f.name), attrs);
   if (added.length) log(`  ! ${added.length} new photo(s) have no name yet; open the backoffice to give them one`);
   if (orphans.length) log(`  ${orphans.length} entr${orphans.length > 1 ? 'ies' : 'y'} in collection.json without a photo (ignored)`);
+  const noColor = items.filter((e) => !e.color).length;
+  if (noColor) log(`  ! ${noColor} piece(s) have no colour yet; open the backoffice to measure them`);
   const byName = new Map(files.map((f) => [f.name, f]));
   const sorted = items.map((e) => byName.get(e.file));
   const usedSlugs = new Set();
   const catalog = new Map();
   for (const e of items) {
-    const { file, name, ...values } = e;
+    const { file, name, hex, colorByHand, ...values } = e; // hex and colorByHand are for the backoffice only
     const id = byName.get(file).id;
     let slug = slugify(name) || slugify(id);
     if (usedSlugs.has(slug)) { log(`  ! the name "${name}" is used twice; ${file} gets #${slug}-${id}`); slug += '-' + slugify(id); }
     usedSlugs.add(slug);
     catalog.set(file, { name: name || id, slug, ...values });
   }
-  return { files: sorted, catalog, attrs: attrs.filter((a) => a.key !== 'price').map((a) => ({ key: a.key, label: a.label })) };
+  // the whole palette, in palette order, for the colour filter (colours without pieces are shown dimmed)
+  const colors = {
+    palette: (cfg.colors?.palette || []).map((p) => ({ name: p.name, hex: p.hex })),
+    multiLabel: cfg.colors?.multiLabel || 'multicolour',
+  };
+  return { files: sorted, catalog, colors, attrs: attrs.filter((a) => a.key !== 'price').map((a) => ({ key: a.key, label: a.label, values: a.values })) };
 }
 
 // ---------------------------------------------------------------- static assets
@@ -522,7 +529,7 @@ async function main() {
     layout: cfg.layout, thumbs: { lazyMargin: cfg.thumbs.lazyMargin }, splash: { slideSeconds: cfg.splash.slideSeconds, fadeSeconds: cfg.splash.fadeSeconds },
     animation: cfg.animation, shop: cfg.shop, theme: cfg.theme,
   };
-  const data = { config: publicCfg, splash, attrs: coll.attrs, collection: collection.items, gallery: gallery.items,
+  const data = { config: publicCfg, splash, attrs: coll.attrs, colors: coll.colors, collection: collection.items, gallery: gallery.items,
     sheets: { collection: collection.sheets, gallery: gallery.sheets } };
   const dataJs = `window.SITE=${JSON.stringify(data)};\n`;
   const dataName = `data/site-${sha(dataJs, 8)}.js`;

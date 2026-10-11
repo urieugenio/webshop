@@ -137,12 +137,34 @@ The previous version is kept in `build\cache\backoffice\collection.previous.json
 
 **Names.** The name is shown in the detail pane and is the link to the piece: "Cape Town" → `#cape-town`.
 A new photo gets a free city name from `backoffice\cities.txt`; ↻ in the editor suggests another one.
+`cities.txt` holds the 10,000 largest cities of countries that use the Latin alphabet, one-word names only. It is made from the GeoNames list
+(`content\sources\cities15000.txt`, geonames.org, CC BY 4.0) with `node backoffice\make-cities.mjs`; run that again to remake it
+(an optional second argument sets the number of names).
 Names must be unique and cannot be the name of a section (`collection`, `contact`, …).
 Renaming a piece changes its link. The file name (`DSC01606`) is still used for the images and the cart.
 
 **New and removed photos.** A photo you add to `collection\` appears at the end of the grid with the default attributes
 the next time the backoffice (re)loads. If you remove a photo, its entry stays in `collection.json` but is not shown, so it keeps its name
 if the photo comes back.
+
+**Colours.** The backoffice measures the colour of every new photo when it starts (the first time this takes
+about half a minute for 145 photos). It stores the nearest palette colour, whether the piece is multicoloured, and
+the measured colour itself. The dot on each tile shows the result; a half-rainbow dot means multicolour.
+Click a colour above the grid to see only those pieces, which is a quick way to check the detection.
+To correct a piece, change *colour* or *multicolour* in its editor: it is then marked "set by hand" and never changed
+by a new measurement. **measure** in the editor measures that photo again; **Measure colours** in the top bar measures
+every photo again except the ones set by hand (use it after changing the palette or the thresholds).
+
+How it measures (`lib/colors.mjs`): the dominant colour comes from the front of the crown, above the label.
+For *multicolour* the crown plus the side right of the label is split into two colour groups: a plain piece splits into
+lit and shaded yarn of one colour, a multicoloured piece into two clearly different colours. On the first 145 photos
+the dominant colour was almost always right and *multicolour* matched a human eye for about 9 out of 10 pieces;
+fine pastel speckles and gradients that only change near the brim are the usual misses.
+
+On the site the collection has a filter bar: colour dots, multicolour, and a chip per price and per size (and per value of
+any attribute you add). Within a row any choice matches, between rows all must match: *blue + multicolour + € 180*
+shows the multicoloured pieces that are mostly blue and cost € 180. The ‹ › arrows in the detail pane skip the pieces
+the filter hides.
 
 ### attributes.txt
 
@@ -183,6 +205,9 @@ All tunables are in `config.json`, and the front-end reads them from the generat
 | `logo.landscapeWidthAt16x9` / `portraitWidthAt9x16` | 0.62 / 0.85, as specified |
 | `logo.taglineTop` / `taglineWidthOfLogo` | tagline at 10 % from the top; tagline width as a fraction of the logo width (taken from layout-portrait.png) |
 | `animation.paneSeconds` / `ease` | 1 s, `power2.out` (cubic-bezier 0.215, 0.61, 0.355, 1) |
+| `colors.palette` | the filter colours: `name`, the `hex` shown on the site, and optional `refs`: example colours that count as this colour (a measured colour gets the name of the nearest example). Add a reference colour when a kind of beanie lands in the wrong colour |
+| `colors.multiLabel` | the word for multicoloured pieces ("multicolour") |
+| `colors.analysis` | where the colour is measured (fractions of the photo: left, top, right, bottom) and `multiDelta`: how different the two colours must be for "multicolour". Lower = more pieces count as multicolour (18.3 was calibrated on the first photos) |
 | `shop.previewSoldIds` | **phase 1 only**: these items are shown as sold so you can judge the "sold" band. Empty the list when going live |
 | `shop.liveInventory` | phase 2: switch on to read the inventory from Cloudflare D1 every `pollSeconds` |
 

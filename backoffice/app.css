@@ -4,13 +4,13 @@ html{color-scheme:dark}
 body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,"Segoe UI",sans-serif}
 button,input,select{font:inherit;color:inherit}
 
-.btn{background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:6px 14px;cursor:pointer;text-decoration:none;color:var(--text)}
+.btn{white-space:nowrap;background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:6px 14px;cursor:pointer;text-decoration:none;color:var(--text)}
 .btn:hover{border-color:var(--muted)}
 .btn:disabled{opacity:.5;cursor:default}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-text)}
 
-.bar{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:12px;padding:12px 24px;background:var(--bg);border-bottom:1px solid var(--line)}
-.bar h1{margin:0 auto 0 0;font-size:18px;font-weight:500}
+.bar{position:sticky;top:0;z-index:5;display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:12px 24px;background:var(--bg);border-bottom:1px solid var(--line)}
+.bar h1{margin:0 auto 0 0;font-size:18px;font-weight:500;white-space:nowrap}
 .bar .count{color:var(--muted);font-size:14px;margin-left:6px}
 .status{color:var(--muted);font-size:13px}
 .status.err{color:#ff6b6b}
@@ -21,9 +21,19 @@ button,input,select{font:inherit;color:inherit}
 .tile img{display:block;width:100%;aspect-ratio:1;object-fit:cover;background:var(--surface);border:1px solid var(--thumb-border);pointer-events:none}
 .tile:hover img{outline:2px solid var(--accent);outline-offset:-2px}
 .tile figcaption{padding:6px 2px 0}
-.tile .name{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile .name{display:flex;align-items:center;gap:6px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dot{flex:none;width:12px;height:12px;border-radius:50%;background:var(--sw,transparent);box-shadow:inset 0 0 0 1px rgba(255,255,255,.25)}
+.dot.multi{background:conic-gradient(var(--sw,#888) 0 50%,#e33 0 62.5%,#fc2 0 75%,#2b5 0 87.5%,#38f 0)}
+.dot.none{background:none;box-shadow:inset 0 0 0 1px var(--muted)}
 .tile .attrs{display:block;color:var(--muted);font-size:12px}
 .tile.ghost{opacity:.3}
+
+.filters{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:12px 24px 0}
+.filters button{display:flex;align-items:center;gap:6px;padding:4px 10px 4px 6px;border:1px solid var(--line);border-radius:14px;background:var(--surface);cursor:pointer;font-size:12px}
+.filters button[aria-pressed=true]{border-color:var(--accent);color:var(--accent)}
+.filters .n{color:var(--muted)}
+.filters button.zero{opacity:.55}
+.filter-count{color:var(--muted);font-size:12px;margin-left:6px}
 .tile.drag{transform:rotate(2deg)}
 
 .detail{padding:0;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--text);max-width:min(860px,calc(100vw - 32px))}
@@ -38,6 +48,9 @@ button,input,select{font:inherit;color:inherit}
 .field input:focus,.field select:focus{outline:none;border-color:var(--accent)}
 .field .row{display:flex;gap:6px}
 .name-msg{color:#ff6b6b;min-height:1em}
+.check{display:flex;align-items:center;gap:8px;cursor:pointer}
+.check input{width:16px;height:16px;accent-color:var(--accent)}
+.color-note{color:var(--muted);font-size:12px;display:flex;align-items:center;gap:6px;min-height:1em}
 .attrs{display:flex;flex-direction:column;gap:14px}
 .nav{display:flex;gap:6px;margin-top:auto}
 .nav .close{margin-left:auto}
@@ -49,7 +62,7 @@ button,input,select{font:inherit;color:inherit}
 
 @media (max-width:640px){
   .bar,.grid{padding-left:16px;padding-right:16px}
-  .hint{margin-left:16px}
+  .hint,.filters{margin-left:16px;margin-right:16px}
   .grid{grid-template-columns:repeat(auto-fill,minmax(110px,1fr))}
   .detail form{flex-direction:column}
   .detail .photo{width:100%}

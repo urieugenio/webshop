@@ -4,8 +4,8 @@
 //   node backoffice.mjs        start on http://localhost:8081 and open it in the browser
 //   options: --port=<n>  --no-open  --sources=<folder>
 //
-// Edits sources/collection.json: the order, the name and the attributes (sources/attributes.txt) of every
-// collection photo. That is the only file it ever writes inside the sources folder. The "Build site"
+// Edits sources/collection.json: the order, the name, the attributes (sources/attributes.txt) and the colour
+// (measured from the photo, see lib/colors.mjs) of every collection photo. That is the only file it ever writes inside the sources folder. The "Build site"
 // button runs build.mjs; the built site is shown at /site/.
 
 import fs from 'node:fs';
@@ -19,6 +19,7 @@ import sharp from 'sharp';
 import {
   COLLECTION_FILE, readAttributes, readCollection, mergeCollection, normalizeEntry, formatCollection, slugify,
 } from './lib/collection.mjs';
+import { analyseColor } from './lib/colors.mjs';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -33,6 +34,8 @@ const UI = path.join(ROOT, 'backoffice');
 const PORT = Number(argVal('--port')) || 8081;
 const IMG_EXT = /\.(jpe?g|png|webp|tiff?)$/i;
 const THUMB_WIDTHS = [320, 960];
+const PALETTE = cfg.colors?.palette || [];
+const ANALYSIS = cfg.colors?.analysis || {};
 
 sharp.cache(false);
 
@@ -63,8 +66,37 @@ function pickName(used) {
   return name;
 }
 
+// ---------------------------------------------------------------- colours
+async function pool(items, n, fn) {
+  let i = 0;
+  await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (i < items.length) await fn(items[i++]); }));
+}
+
+/** measure the colour of these entries (sets color, multi, hex; a colour set by hand is no longer by hand) */
+async function detectColors(entries) {
+  if (!entries.length || !PALETTE.length) return;
+  console.log(`Measuring the colour of ${entries.length} photo${entries.length > 1 ? 's' : ''}…`);
+  let done = 0;
+  await pool(entries, 4, async (e) => {
+    const r = await analyseColor(path.join(PHOTOS, e.file), PALETTE, ANALYSIS);
+    Object.assign(e, { color: r.color, multi: r.multi, hex: r.hex });
+    delete e.colorByHand;
+    if (++done % 20 === 0) console.log(`  ${done}/${entries.length}`);
+  });
+}
+
+/** the colour fields of an entry sent by the page, checked */
+function cleanColor(e) {
+  const out = {};
+  out.color = PALETTE.some((p) => p.name === e.color) ? e.color : null;
+  out.multi = e.multi === true;
+  if (typeof e.hex === 'string' && /^#[0-9a-f]{6}$/i.test(e.hex)) out.hex = e.hex;
+  if (e.colorByHand === true) out.colorByHand = true;
+  return out;
+}
+
 // ---------------------------------------------------------------- collection.json
-/** current state; new photos get the default attributes and a free city name, and are saved straight away */
+/** current state; new photos get the default attributes, a free city name and their colour, and are saved straight away */
 async function load() {
   const attrs = readAttributes(SRC);
   const saved = readCollection(SRC);
@@ -72,7 +104,9 @@ async function load() {
   const used = new Set([...reservedSlugs(), ...saved.map((e) => slugify(e.name || '')).filter(Boolean)]);
   const unnamed = items.filter((e) => !e.name);
   for (const e of unnamed) e.name = pickName(used);
-  if (added.length || unnamed.length) await save(items, orphans, attrs);
+  const unmeasured = items.filter((e) => !e.hex);
+  await detectColors(unmeasured);
+  if (added.length || unnamed.length || unmeasured.length) await save(items, orphans, attrs);
   return { attrs, items, orphans };
 }
 
@@ -178,6 +212,7 @@ async function handle(req, res) {
     const s = await load();
     return sendJson(res, 200, {
       attrs: s.attrs, items: s.items, cities,
+      palette: PALETTE.map((p) => ({ name: p.name, hex: p.hex })), multiLabel: cfg.colors?.multiLabel || 'multicolour',
       taken: [...reservedSlugs(), ...s.orphans.map((e) => slugify(e.name || '')).filter(Boolean)],
       currency: cfg.shop.currency, locale: cfg.shop.locale,
     });
@@ -189,8 +224,25 @@ async function handle(req, res) {
     const orphanSlugs = orphans.map((e) => slugify(e.name || '')).filter(Boolean);
     const err = validate(body.items, new Set(photos()), new Set([...reservedSlugs(), ...orphanSlugs]));
     if (err) return sendJson(res, 400, { error: err });
-    const items = body.items.map((e) => normalizeEntry(e, attrs));
+    const items = body.items.map((e) => {
+      const { color, multi, hex, colorByHand, ...rest } = e;
+      return { ...normalizeEntry(rest, attrs), ...cleanColor(e) };
+    });
     await save(items, orphans, attrs);
+    return sendJson(res, 200, { ok: true });
+  }
+  if (req.method === 'POST' && p === '/api/detect') {
+    // measure one photo again; the page decides what to do with the result
+    const { file } = await readBody(req);
+    if (!photos().includes(file)) return sendJson(res, 400, { error: `unknown photo: ${file}` });
+    const r = await analyseColor(path.join(PHOTOS, file), PALETTE, ANALYSIS);
+    return sendJson(res, 200, { color: r.color, multi: r.multi, hex: r.hex });
+  }
+  if (req.method === 'POST' && p === '/api/detect-all') {
+    // measure every photo again, except the ones whose colour was set by hand
+    const s = await load();
+    await detectColors(s.items.filter((e) => !e.colorByHand));
+    await save(s.items, s.orphans, s.attrs);
     return sendJson(res, 200, { ok: true });
   }
   if (req.method === 'POST' && p === '/api/build') return runBuild(res);

@@ -93,6 +93,30 @@
     "menuSeconds": 0.5
   },
 
+  "colors": {
+    "multiLabel": "multicolour",
+    "palette": [
+      { "name": "black",  "hex": "#1c1c1c" },
+      { "name": "grey",   "hex": "#8c8c8c", "refs": ["#8c8c8c", "#5a5a5a", "#b8b4b0"] },
+      { "name": "white",  "hex": "#f2f0ea", "refs": ["#f2f0ea", "#e0dcd2"] },
+      { "name": "beige",  "hex": "#d6c1a3", "refs": ["#d6c1a3", "#c4ab8c", "#e6d6bf"] },
+      { "name": "brown",  "hex": "#7a5236", "refs": ["#7a5236", "#a0806a", "#5c3d2a"] },
+      { "name": "red",    "hex": "#c8202c", "refs": ["#c8202c", "#8e1a22"] },
+      { "name": "orange", "hex": "#f07a2a", "refs": ["#f07a2a", "#ff5a3c", "#f4a070", "#e07060"] },
+      { "name": "yellow", "hex": "#f2cf2a", "refs": ["#f2cf2a", "#d8b030"] },
+      { "name": "green",  "hex": "#2f9e44", "refs": ["#2f9e44", "#7fdc2a", "#1d6b3a", "#c8f040"] },
+      { "name": "blue",   "hex": "#1e78d0", "refs": ["#1e78d0", "#1b3a7a", "#7fd6f0", "#108ab0"] },
+      { "name": "purple", "hex": "#7d3c98", "refs": ["#7d3c98", "#a07ab8", "#c4b4e4", "#9080d0"] },
+      { "name": "pink",   "hex": "#ec5fa8", "refs": ["#ec5fa8", "#f4b6c8", "#c0306a"] }
+    ],
+    "analysis": {
+      "region": [0.30, 0.08, 0.80, 0.22],
+      "multiRegions": [[0.30, 0.08, 0.80, 0.22], [0.47, 0.22, 0.80, 0.58]],
+      "multiDelta": 18.3,
+      "multiShare": 0.1
+    }
+  },
+
   "shop": {
     "currency": "EUR",
     "locale": "nl-NL",

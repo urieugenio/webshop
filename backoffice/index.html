@@ -11,11 +11,13 @@
 <header class="bar">
   <h1>Collection <span class="count"></span></h1>
   <span class="status" role="status"></span>
+  <button class="btn measure-all" type="button" title="measure the colour of every photo again (colours set by hand are kept)">Measure colours</button>
   <a class="btn" href="/site/" target="_blank" rel="noopener">View site</a>
   <button class="btn primary build" type="button">Build site</button>
 </header>
 
 <p class="hint">Drag to reorder. Click a piece to edit it; closing saves.</p>
+<nav class="filters" aria-label="filter by colour"></nav>
 <main class="grid" aria-label="collection"></main>
 
 <section class="log" hidden>
@@ -35,6 +37,13 @@
         <small class="name-msg"></small>
       </label>
       <div class="attrs"></div>
+      <label class="field">
+        <span>colour</span>
+        <span class="row"><select name="color"></select>
+          <button class="btn measure" type="button" title="measure the colour of this photo again">measure</button></span>
+      </label>
+      <label class="check"><input type="checkbox" name="multi"> <span class="multi-label">multicolour</span></label>
+      <small class="color-note"></small>
       <nav class="nav">
         <button class="btn prev" type="button" title="previous (←)">‹</button>
         <button class="btn next" type="button" title="next (→)">›</button>

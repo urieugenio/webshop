@@ -371,8 +371,14 @@
       if (updateUrl) history.replaceState(null, '', location.pathname + location.search);
       if (t) { scrollThumbIntoView(t); setTimeout(() => t.focus({ preventScroll: true }), C.animation.paneSeconds * 1000); }
     },
+    /** the next piece in direction d that the filter shows (-1 or items.length when there is none) */
+    neighbour(d) {
+      let j = this.i + d;
+      while (j >= 0 && j < this.items.length && !Filter.shows(this.key, this.items[j])) j += d;
+      return j;
+    },
     step(d) {
-      const j = this.i + d;
+      const j = this.neighbour(d);
       if (j < 0 || j >= this.items.length) return;
       this.i = j;
       history.replaceState(null, '', '#' + encodeURIComponent(ref(this.item)));
@@ -419,8 +425,8 @@
         this.img.src = it.d[it.d.length - 1].src;
         this.img.alt = label(it);
         if (this.img.complete && this.img.naturalWidth) this.img.classList.add('ready');
-        this.prev.hidden = this.i <= 0;
-        this.next.hidden = this.i >= this.items.length - 1;
+        this.prev.hidden = this.neighbour(-1) < 0;
+        this.next.hidden = this.neighbour(1) >= this.items.length;
         this.refreshInfo();
         this.media.classList.remove('fading');
         $('.pane-scroll', this.pane).scrollTop = 0;
@@ -432,11 +438,12 @@
       const it = this.item;
       const sold = Shop.sold.has(it.id);
       const inCart = Cart.has(it.id);
-      const attrs = (S.attrs || []).filter((a) => it[a.key] != null && it[a.key] !== '');
+      const rows = (S.attrs || []).filter((a) => it[a.key] != null && it[a.key] !== '').map((a) => [a.label, it[a.key]]);
+      if (it.color) rows.push(['colour', it.multi ? `${it.color}, ${S.colors.multiLabel}` : it.color]);
       this.info.innerHTML = `
         <p class="ref">${esc(label(it))}</p>
         <p class="price">${it.price != null ? money(it.price) : ''}${sold ? '<span class="sold-tag">sold</span>' : ''}</p>
-        ${attrs.length ? `<dl>${attrs.map((a) => `<dt>${esc(a.label)}</dt><dd>${esc(it[a.key])}</dd>`).join('')}</dl>` : ''}
+        ${rows.length ? `<dl>${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>` : ''}
         ${it.price != null ? `<button class="btn-cart${sold ? ' is-sold' : inCart ? ' in-cart' : ''}" type="button" ${sold || inCart ? 'disabled' : ''}>
           ${sold ? 'sold' : inCart ? 'in your cart ✓' : 'add to cart'}</button>` : ''}
         <p class="status"></p>`;
@@ -458,6 +465,80 @@
       html.style.scrollBehavior = '';
     }
   }
+
+  // ============================================================ collection filters
+  // One colour at a time: the colour dots work like radio buttons ("multicolour" shows the multicoloured pieces);
+  // clicking the chosen dot again shows all colours. Price and every other attribute get a pulldown.
+  // A piece is shown when it matches the colour and every pulldown.
+  const MULTI = '*multi';
+  const Filter = {
+    color: null,  // palette name, MULTI or null (all colours)
+    pick: {},     // attribute key -> chosen value
+    init() {
+      this.bar = $('.filters[data-section="collection"]');
+      const items = S.collection || [];
+      if (!this.bar || items.length < 2) return;
+      const present = (key) => new Set(items.map((it) => it[key]).filter((v) => v != null && v !== ''));
+      let html = '';
+      // colour dots, in palette order
+      const colours = present('color');
+      // every palette colour is shown, also when no piece has it at the moment (then dimmed and not clickable)
+      const dot = (value, cls, title, hex, none) => `<button type="button" role="radio" class="${cls}" data-color="${esc(value)}" ` +
+        `title="${esc(title)}${none ? ' (none at the moment)' : ''}" aria-label="${esc(title)}" aria-checked="false"` +
+        `${hex ? ` style="--sw:${hex}"` : ''}${none ? ' disabled' : ''}></button>`;
+      const dots = (S.colors?.palette || []).map((p) => dot(p.name, 'sw', p.name, p.hex, !colours.has(p.name)));
+      dots.push(dot(MULTI, 'sw multi', S.colors.multiLabel, null, !items.some((it) => it.multi)));
+      if (dots.length > 1) html += `<div class="fgroup" role="radiogroup" aria-label="colour"><span class="flabel">colour</span>${dots.join('')}</div>`;
+      // pulldowns: price from low to high, other attributes in the order of attributes.txt
+      this.lists = {};
+      const pulldown = (key, label, values, fmt) => {
+        if (values.length < 2) return;
+        this.lists[key] = values;
+        html += `<label class="fgroup"><span class="flabel">${esc(label)}</span><select class="fsel" data-key="${esc(key)}">` +
+          `<option value="">all</option>${values.map((v, i) => `<option value="${i}">${esc(fmt(v))}</option>`).join('')}</select></label>`;
+      };
+      pulldown('price', 'price', [...present('price')].sort((a, b) => a - b), money);
+      for (const a of S.attrs || []) {
+        const vals = present(a.key);
+        pulldown(a.key, a.label, (a.values || []).filter((v) => vals.has(v)).concat([...vals].filter((v) => !(a.values || []).includes(v))), String);
+      }
+      if (!html) return;
+      this.bar.innerHTML = html + '<div class="fstatus" hidden><span class="fcount"></span><button type="button" class="fclear">show all</button></div>';
+      this.bar.addEventListener('click', (e) => {
+        const b = e.target.closest('button');
+        if (!b) return;
+        if (b.classList.contains('fclear')) {
+          this.color = null; this.pick = {};
+          $$('select', this.bar).forEach((s) => { s.value = ''; });
+        } else {
+          this.color = this.color === b.dataset.color ? null : b.dataset.color;
+        }
+        this.apply();
+      });
+      this.bar.addEventListener('change', (e) => {
+        const s = e.target, key = s.dataset.key;
+        if (s.value === '') delete this.pick[key]; else this.pick[key] = this.lists[key][s.value];
+        this.apply();
+      });
+      this.bar.hidden = false;
+      this.empty = this.bar.parentElement.querySelector('.filter-empty');
+    },
+    match(it) {
+      if (this.color === MULTI ? !it.multi : this.color && it.color !== this.color) return false;
+      return Object.entries(this.pick).every(([k, v]) => it[k] === v);
+    },
+    shows(section, it) { return section !== 'collection' || this.match(it); },
+    apply() {
+      const sec = Grid.sections.collection;
+      let n = 0;
+      sec.thumbs.forEach((t, i) => { const ok = this.match(sec.items[i]); t.hidden = !ok; n += ok; });
+      for (const b of $$('button[data-color]', this.bar)) b.setAttribute('aria-checked', b.dataset.color === this.color);
+      $('.fstatus', this.bar).hidden = !this.color && !Object.keys(this.pick).length;
+      $('.fcount', this.bar).textContent = `${n} of ${sec.items.length}`;
+      if (this.empty) this.empty.hidden = n > 0;
+      Grid.layout();
+    },
+  };
 
   // ============================================================ menu
   const Menu = {
@@ -501,6 +582,7 @@
   Splash.init();
   Menu.init();
   Grid.init();
+  Filter.init();
   Detail.init();
   Cart.init();
   Shop.init();
