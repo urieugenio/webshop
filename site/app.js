@@ -13,6 +13,9 @@
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
   };
   const money = (n) => (n == null ? '' : new Intl.NumberFormat(C.shop.locale, { style: 'currency', currency: C.shop.currency, maximumFractionDigits: n % 1 ? 2 : 0 }).format(n));
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const label = (it) => it.name || it.id;     // the product name, or the file name for gallery pictures
+  const ref = (it) => it.slug || it.id;       // what goes after the # in the url
   const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
 
   // ============================================================ splash
@@ -125,7 +128,7 @@
           b.id = 't-' + it.id;
           b.dataset.i = i;
           b.style.setProperty('--c', it.c);
-          b.setAttribute('aria-label', it.description ? `${it.id}: ${it.description}` : it.id);
+          b.setAttribute('aria-label', label(it));
           b.innerHTML = '<span class="ti"></span>' + (key === 'collection' ? '<span class="sold-band">sold</span>' : '');
           b.addEventListener('click', () => Detail.open(key, i, true));
           frag.appendChild(b);
@@ -288,10 +291,10 @@
         if (!sold && it.price) total += it.price;
         const row = document.createElement('div');
         row.className = 'cart-item' + (sold ? ' is-sold' : '');
-        row.innerHTML = `<button class="thumb loaded" type="button" aria-label="show ${id}"><span class="ti"></span></button>
-          <div><div class="ci-ref">${id}</div><div class="ci-desc"></div>${sold ? '<div class="ci-sold">sold — no longer available</div>' : ''}</div>
+        row.innerHTML = `<button class="thumb loaded" type="button" aria-label="show ${esc(label(it))}"><span class="ti"></span></button>
+          <div><div class="ci-ref">${esc(label(it))}</div><div class="ci-desc"></div>${sold ? '<div class="ci-sold">sold — no longer available</div>' : ''}</div>
           <div><div class="ci-price">${money(it.price)}</div><button class="ci-remove" type="button">remove</button></div>`;
-        $('.ci-desc', row).textContent = it.title || it.description || '';
+        $('.ci-desc', row).textContent = (S.attrs || []).map((a) => it[a.key]).filter(Boolean).join(' · ');
         const th = $('.thumb', row);
         th.style.setProperty('--c', it.c);
         const tier = Sheets.tierFor('collection', 70);
@@ -354,7 +357,7 @@
       this.pane.classList.add('open');
       this.pane.setAttribute('aria-hidden', 'false');
       html.classList.add('pane-open', 'locked');
-      const url = '#' + encodeURIComponent(this.item.id);
+      const url = '#' + encodeURIComponent(ref(this.item));
       if (location.hash !== url) history[push && !wasOpen ? 'pushState' : 'replaceState'](null, '', url);
     },
     close(updateUrl) {
@@ -372,7 +375,7 @@
       const j = this.i + d;
       if (j < 0 || j >= this.items.length) return;
       this.i = j;
-      history.replaceState(null, '', '#' + encodeURIComponent(this.item.id));
+      history.replaceState(null, '', '#' + encodeURIComponent(ref(this.item)));
       this.render(true);
     },
     size() {
@@ -414,7 +417,7 @@
         this.size();
         this.img.srcset = it.d.map((v) => `${v.src} ${v.w}w`).join(', ');
         this.img.src = it.d[it.d.length - 1].src;
-        this.img.alt = it.description || it.id;
+        this.img.alt = label(it);
         if (this.img.complete && this.img.naturalWidth) this.img.classList.add('ready');
         this.prev.hidden = this.i <= 0;
         this.next.hidden = this.i >= this.items.length - 1;
@@ -429,13 +432,11 @@
       const it = this.item;
       const sold = Shop.sold.has(it.id);
       const inCart = Cart.has(it.id);
-      const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+      const attrs = (S.attrs || []).filter((a) => it[a.key] != null && it[a.key] !== '');
       this.info.innerHTML = `
-        <p class="ref">${esc(it.id)}</p>
-        ${it.title ? `<h2 class="title">${esc(it.title)}</h2>` : ''}
+        <p class="ref">${esc(label(it))}</p>
         <p class="price">${it.price != null ? money(it.price) : ''}${sold ? '<span class="sold-tag">sold</span>' : ''}</p>
-        ${it.material ? `<dl><dt>material</dt><dd>${esc(it.material)}</dd></dl>` : ''}
-        ${it.description ? `<p class="desc">${esc(it.description)}</p>` : ''}
+        ${attrs.length ? `<dl>${attrs.map((a) => `<dt>${esc(a.label)}</dt><dd>${esc(it[a.key])}</dd>`).join('')}</dl>` : ''}
         ${it.price != null ? `<button class="btn-cart${sold ? ' is-sold' : inCart ? ' in-cart' : ''}" type="button" ${sold || inCart ? 'disabled' : ''}>
           ${sold ? 'sold' : inCart ? 'in your cart ✓' : 'add to cart'}</button>` : ''}
         <p class="status"></p>`;
@@ -474,16 +475,18 @@
 
   // ============================================================ #hash routing
   // #collection / #story / ... -> scroll to that section
-  // #DSC01606                   -> scroll to that thumbnail and open its detail pane
+  // #lisbon                     -> scroll to that product (by name) and open its detail pane
+  // #DSC01606                   -> the same for a gallery picture (by file name)
   function route(initial) {
     const id = decodeURIComponent(location.hash.slice(1));
     if (!id) { Detail.close(false); return; }
     for (const key of ['collection', 'gallery']) {
-      const i = (S[key] || []).findIndex((x) => x.id === id);
+      const i = (S[key] || []).findIndex((x) => ref(x) === id);
       if (i >= 0) {
-        const t = document.getElementById('t-' + id);
+        const it = S[key][i];
+        const t = document.getElementById('t-' + it.id);
         if (t && initial) { html.style.scrollBehavior = 'auto'; t.scrollIntoView({ block: 'center' }); html.style.scrollBehavior = ''; }
-        if (!Detail.isOpen || Detail.item.id !== id) Detail.open(key, i, false);
+        if (!Detail.isOpen || Detail.item !== it) Detail.open(key, i, false);
         return;
       }
     }

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Collection backoffice</title>
+<link rel="stylesheet" href="/theme.css">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<header class="bar">
+  <h1>Collection <span class="count"></span></h1>
+  <span class="status" role="status"></span>
+  <a class="btn" href="/site/" target="_blank" rel="noopener">View site</a>
+  <button class="btn primary build" type="button">Build site</button>
+</header>
+
+<p class="hint">Drag to reorder. Click a piece to edit it; closing saves.</p>
+<main class="grid" aria-label="collection"></main>
+
+<section class="log" hidden>
+  <header><span class="log-title">Build</span><button class="btn log-close" type="button" aria-label="close log">×</button></header>
+  <pre></pre>
+</section>
+
+<dialog class="detail" aria-label="edit piece">
+  <form method="dialog">
+    <img class="photo" alt="">
+    <div class="fields">
+      <p class="file"></p>
+      <label class="field">
+        <span>name</span>
+        <span class="row"><input name="name" autocomplete="off" spellcheck="false">
+          <button class="btn dice" type="button" title="another city name">↻</button></span>
+        <small class="name-msg"></small>
+      </label>
+      <div class="attrs"></div>
+      <nav class="nav">
+        <button class="btn prev" type="button" title="previous (←)">‹</button>
+        <button class="btn next" type="button" title="next (→)">›</button>
+        <button class="btn primary close" value="close">Close</button>
+      </nav>
+    </div>
+  </form>
+</dialog>
+
+<script src="/sortable.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

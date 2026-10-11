@@ -17,7 +17,7 @@ import http from 'node:http';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 import { marked } from 'marked';
-import { parseCatalog, resolveItem } from './lib/catalog.mjs';
+import { readAttributes, readCollection, mergeCollection, slugify } from './lib/collection.mjs';
 import { renderIndex } from './lib/html.mjs';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -306,9 +306,8 @@ async function buildLogo() {
 }
 
 // ---------------------------------------------------------------- collection / gallery
-async function buildSection(section, files, opts, withCatalog) {
+async function buildSection(section, files, opts, catalog = null) {
   log(`  ${section}: ${files.length} images`);
-  const rules = withCatalog ? await loadCatalogRules() : [];
   const metas = [];
   await pool(files, 4, async (f, i) => { metas[i] = await imageMeta(f); });
   const { sheets, slots, per } = await buildSheets(section, files, opts);
@@ -317,16 +316,33 @@ async function buildSection(section, files, opts, withCatalog) {
     const m = metas[i];
     const detail = await buildDetail(section, f, m);
     const it = { id: f.id, w: m.w, h: m.h, c: m.color, s: Math.floor(slots[f.id] / per), p: slots[f.id] % per, d: detail };
-    if (withCatalog) Object.assign(it, resolveItem(f.id, rules));
+    if (catalog) Object.assign(it, catalog.get(f.name));
     items[i] = it;
   });
   return { items, sheets };
 }
 
-async function loadCatalogRules() {
-  const file = path.join(SRC, 'collection.txt');
-  if (!fs.existsSync(file)) { log('  ! collection.txt not found — items will have no price'); return []; }
-  return parseCatalog(await fsp.readFile(file, 'utf8'));
+// sources/collection.json (written by the backoffice) sets the order, the name and the attributes of
+// every collection photo. Photos it does not know yet are added at the end with the default attributes.
+function loadCollection(files) {
+  const attrs = readAttributes(SRC);
+  if (!attrs.length) log('  ! attributes.txt not found or empty — products have no price');
+  const { items, added, orphans } = mergeCollection(readCollection(SRC), files.map((f) => f.name), attrs);
+  if (added.length) log(`  ! ${added.length} new photo(s) have no name yet; open the backoffice to give them one`);
+  if (orphans.length) log(`  ${orphans.length} entr${orphans.length > 1 ? 'ies' : 'y'} in collection.json without a photo (ignored)`);
+  const byName = new Map(files.map((f) => [f.name, f]));
+  const sorted = items.map((e) => byName.get(e.file));
+  const usedSlugs = new Set();
+  const catalog = new Map();
+  for (const e of items) {
+    const { file, name, ...values } = e;
+    const id = byName.get(file).id;
+    let slug = slugify(name) || slugify(id);
+    if (usedSlugs.has(slug)) { log(`  ! the name "${name}" is used twice; ${file} gets #${slug}-${id}`); slug += '-' + slugify(id); }
+    usedSlugs.add(slug);
+    catalog.set(file, { name: name || id, slug, ...values });
+  }
+  return { files: sorted, catalog, attrs: attrs.filter((a) => a.key !== 'price').map((a) => ({ key: a.key, label: a.label })) };
 }
 
 // ---------------------------------------------------------------- static assets
@@ -487,8 +503,9 @@ async function main() {
   log('Splash');
   const splash = await buildSplash();
   log('Sections');
-  const collection = await buildSection('collection', listImages(path.join(SRC, 'collection')), cfg.thumbs.collection, true);
-  const gallery = await buildSection('gallery', listImages(path.join(SRC, 'gallery')), cfg.thumbs.gallery, false);
+  const coll = loadCollection(listImages(path.join(SRC, 'collection')));
+  const collection = await buildSection('collection', coll.files, cfg.thumbs.collection, coll.catalog);
+  const gallery = await buildSection('gallery', listImages(path.join(SRC, 'gallery')), cfg.thumbs.gallery);
   log('Content');
   const sections = await buildContent();
   await fsp.writeFile(path.join(CACHE, 'meta.json'), JSON.stringify(meta));
@@ -505,7 +522,7 @@ async function main() {
     layout: cfg.layout, thumbs: { lazyMargin: cfg.thumbs.lazyMargin }, splash: { slideSeconds: cfg.splash.slideSeconds, fadeSeconds: cfg.splash.fadeSeconds },
     animation: cfg.animation, shop: cfg.shop, theme: cfg.theme,
   };
-  const data = { config: publicCfg, splash, collection: collection.items, gallery: gallery.items,
+  const data = { config: publicCfg, splash, attrs: coll.attrs, collection: collection.items, gallery: gallery.items,
     sheets: { collection: collection.sheets, gallery: gallery.sheets } };
   const dataJs = `window.SITE=${JSON.stringify(data)};\n`;
   const dataName = `data/site-${sha(dataJs, 8)}.js`;

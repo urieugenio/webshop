@@ -9,13 +9,14 @@ The generator only **reads** the sources folder; it refuses to write anything in
 D:\Webshop\
 ├── code\      ← this folder: the git repository (github.com/urieugenio/webshop)
 │   ├── build.mjs, config.json, package.json, run.bat
+│   ├── backoffice.mjs, backoffice.bat, backoffice\   the collection editor (see 4a)
 │   ├── lib\       generator modules
 │   ├── site\      front-end css + js (copied into the build with a hash in the name)
 │   ├── assets\    fonts
 │   ├── samples\   example markdown
 │   └── node_modules\   (not in git; recreated by "npm install")
 ├── content\   ← local only, never in git
-│   ├── sources\   everything the build reads: logo, splash, collection, gallery, content pages, collection.txt
+│   ├── sources\   everything the build reads: logo, splash, collection, gallery, content pages, attributes.txt, collection.json
 │   ├── design\    poster, layout samples, logo artwork, mockups
 │   └── prompts\   working notes / prompts
 └── build\     ← generated, never in git, safe to delete (a rebuild recreates it)
@@ -29,7 +30,7 @@ The three folders are siblings, so git can only ever see `code`. Paths to the ot
 ## 1. One-time setup
 
 1. Install **Node.js LTS** (version 22 or newer) from https://nodejs.org. Use the default options.
-2. That's it. The first time you run `run.bat` it runs `npm install`, which fetches `sharp` (image processing) and `marked` (markdown).
+2. That's it. The first time you run `run.bat` it runs `npm install`, which fetches `sharp` (image processing), `marked` (markdown) and `sortablejs` (drag and drop in the backoffice).
 
 ### Git (code only)
 
@@ -92,7 +93,8 @@ Two notes:
 | `logo.svg` | the centred logo on the splash page |
 | `splash/*.jpg` | splash background. `splash-master.jpg` plus its wider versions `splash-master-wide.jpg` (16:9) and `splash-master-superwide.jpg` (32:9), all the same height with the figure centred. From these the build renders every aspect in `splash.aspects`, each cut from the narrowest master that is wide enough, so only the sides are ever cropped. Any other picture (with its own optional `-wide` / `-superwide` versions) becomes an extra cross-fading slide. `.psd` files are ignored |
 | `collection/*.jpg` | collection products (square) |
-| `collection.txt` | price, material, description per product (see below) |
+| `attributes.txt` | the choices for price, size, … (see **4a**) |
+| `collection.json` | order, name, price, size of every product. Written by the backoffice (see **4a**) |
 | `gallery/*.jpg` | gallery pictures, any aspect ratio. **Create this folder** — while it is missing, the gallery says "new pictures coming soon" |
 | `content/*.md` | the page sections, see **Content sections** below |
 | `content/*-<section>.jpg` | one optional picture per section |
@@ -120,24 +122,46 @@ Every section of the page below the splash is a markdown file named `<number>_<n
   other options "centre", "south", "attention" = most detailed part).
   If there are two pictures for one section the build warns and uses the last one; a picture that matches no section is reported.
 
-### collection.txt
+## 4a. Backoffice (`backoffice.bat`)
+
+Double-click **`backoffice.bat`** (or `npm run backoffice`). It opens http://localhost:8081 in the browser; close the
+black window to stop it.
+
+- the grid shows every photo in `collection\` with its name, price and size, in the order of the site;
+- **drag** a piece to change the order;
+- **click** a piece to edit it. Closing the editor (Close, Esc, or clicking next to it) saves. ‹ › or the arrow keys go to the previous/next piece;
+- **Build site** runs the generator and shows its output; **View site** opens the result.
+
+Every change is saved straight away to `sources\collection.json`, the only file the backoffice writes in `sources`.
+The previous version is kept in `build\cache\backoffice\collection.previous.json`.
+
+**Names.** The name is shown in the detail pane and is the link to the piece: "Cape Town" → `#cape-town`.
+A new photo gets a free city name from `backoffice\cities.txt`; ↻ in the editor suggests another one.
+Names must be unique and cannot be the name of a section (`collection`, `contact`, …).
+Renaming a piece changes its link. The file name (`DSC01606`) is still used for the images and the cart.
+
+**New and removed photos.** A photo you add to `collection\` appears at the end of the grid with the default attributes
+the next time the backoffice (re)loads. If you remove a photo, its entry stays in `collection.json` but is not shown, so it keeps its name
+if the photo comes back.
+
+### attributes.txt
 
 ```
-#file::price::material::description
-*::180::merino::single strand beanie made with fine hand-dyed merino wool.
-1606-1616::180::merino::foldable double strand beanie made with hand-dyed merino wool.
-1620,1625,1630-1633::150::alpaca::...
+[price]
+150
+*180
+220
+
+[size]
+*54-56 cm
+56-58 cm
 ```
 
-- the identifier matches the **end** of the file name: `1606` matches `DSC01606.jpg`;
-- `1606-1616` matches every file whose trailing number is in that range;
-- several identifiers can be separated by commas;
-- `*` matches every file, which makes it a good place for defaults;
-- more specific beats less specific (exact > range > `*`); between rules of the same kind, the later line wins;
-- the header line decides the column order. You can add columns, e.g. `#file::title::price::material::description`; a `title` column is shown above the price.
-
-Your current lines have three fields while the header has four. The generator reads them as identifier · price · description,
-so material stays empty. Add the material as the third field when you want it shown.
+- every `[section]` is one attribute: a dropdown in the backoffice and a line under the price on the site;
+- one value per line; `*` marks the default for new photos (without a `*` new photos get no value);
+- `price` is a number in euros; all other values are shown exactly as written;
+- add a section (e.g. `[colour]`) to add an attribute; removing a value from the list does not change pieces that already have it
+  (the backoffice shows it as "not in attributes.txt").
 
 ## 5. Tuning (`config.json`)
 
