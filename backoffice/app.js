@@ -196,8 +196,8 @@
     colorSel.value = it.color || '';
     $('[name=multi]', dlg).checked = !!it.multi;
     colorNote(it);
-    $('.prev', dlg).disabled = i === 0;
-    $('.next', dlg).disabled = i === S.items.length - 1;
+    $('.prev', dlg).disabled = neighbour(-1) < 0;
+    $('.next', dlg).disabled = neighbour(1) >= S.items.length;
     if (!dlg.open) dlg.showModal();
   }
 
@@ -238,9 +238,16 @@
     $('.color-note', dlg).replaceChildren(...parts);
   }
 
+  /** the next piece in direction d that the colour filter shows (-1 or items.length when there is none) */
+  function neighbour(d) {
+    let j = current + d;
+    while (j >= 0 && j < S.items.length && !matches(S.items[j])) j += d;
+    return j;
+  }
+
   function step(d) {
     commit();
-    open(current + d);
+    open(neighbour(d));
   }
 
   nameInput.addEventListener('input', () => { nameMsg.textContent = nameProblem(nameInput.value, S.items[current]); });
