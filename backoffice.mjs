@@ -150,7 +150,8 @@ async function thumb(name, w) {
   const out = path.join(CACHE, 'thumbs', `${crypto.createHash('sha1').update(`${name}|${st.size}|${st.mtimeMs}`).digest('hex').slice(0, 12)}-${w}.webp`);
   if (!fs.existsSync(out)) {
     await fsp.mkdir(path.dirname(out), { recursive: true });
-    const buf = await sharp(abs, { failOn: 'none' }).rotate().resize(w, w, { fit: 'cover' }).webp({ quality: 80 }).toBuffer();
+    // keepIccProfile: a Display P3 photo keeps its colours (sharp would convert it to sRGB)
+    const buf = await sharp(abs, { failOn: 'none' }).rotate().resize(w, w, { fit: 'cover' }).keepIccProfile().webp({ quality: 80 }).toBuffer();
     await fsp.writeFile(out + '.tmp', buf);
     await fsp.rename(out + '.tmp', out);
   }

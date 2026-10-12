@@ -127,6 +127,21 @@ async function imageMeta(f) {
   return meta[key];
 }
 
+// ---------------------------------------------------------------- colour space
+// Photos exported from Lightroom in sRGB stay sRGB (no profile in the output, as browsers assume sRGB).
+// Photos with a wider profile (Display P3, AdobeRGB, ...) are converted to Display P3 and keep that profile, so
+// colours outside sRGB (turquoise!) show on P3 screens such as iPhones and recent Macs; browsers convert them
+// for sRGB screens. sharp would otherwise convert every photo to sRGB and clip those colours.
+async function isWideGamut(f) {
+  const key = `g|${f.fp}`;
+  if (meta[key] === undefined) {
+    const { icc } = await sharp(f.abs, SHARP_OPTS).metadata();
+    meta[key] = !!icc && !/sRGB/i.test(icc.toString('latin1').replace(/\0/g, ''));
+  }
+  return meta[key];
+}
+const toP3 = (img, wide) => (wide ? img.withIccProfile('p3') : img);
+
 // ---------------------------------------------------------------- thumb sheets
 // Each item gets a stable "slot" on the sheets. Adding or removing photos only
 // changes the sheet(s) that contain those slots; all other sheets stay identical
@@ -164,8 +179,10 @@ async function buildSheets(section, files, opts) {
       const members = (bySheet.get(s) || []).map((f) => ({ f, p: slots[f.id] % per }));
       if (!members.length) { out.tiers[tile].push(null); continue; }
       const rows = Math.ceil((Math.max(...members.map((m) => m.p)) + 1) / opts.tilesPerRow);
+      // a sheet with at least one wide-gamut photo becomes a Display P3 sheet (its sRGB thumbs look the same)
+      const p3 = (await Promise.all(members.map((m) => isWideGamut(m.f)))).some(Boolean);
       const sig = sha(JSON.stringify([tile, pad, opts.fit, cfg.thumbs.quality, cfg.thumbs.sharpen, rows,
-        members.map((m) => [m.p, m.f.id, m.f.fp]).sort((a, b) => a[0] - b[0])]), 8);
+        members.map((m) => [m.p, m.f.id, m.f.fp]).sort((a, b) => a[0] - b[0])].concat(p3 ? ['p3'] : [])), 8);
       const file = `thumbs/${section}-${tile}-${String(s).padStart(3, '0')}-${sig}.webp`;
       out.tiers[tile].push({ url: file, rows });
       await generateOnce(file, async () => {
@@ -173,11 +190,18 @@ async function buildSheets(section, files, opts) {
         await pool(members, 4, async (m) => {
           let img = sharp(m.f.abs, SHARP_OPTS).rotate().resize(tile, tile, { fit: opts.fit, position: 'centre' });
           if (cfg.thumbs.sharpen) img = img.sharpen({ sigma: 0.55 });
-          const buf = await img.extend({ top: pad, bottom: pad, left: pad, right: pad, extendWith: 'copy' }).toBuffer();
-          comps.push({ input: buf, left: (m.p % opts.tilesPerRow) * cell, top: Math.floor(m.p / opts.tilesPerRow) * cell });
+          img = img.extend({ top: pad, bottom: pad, left: pad, right: pad, extendWith: 'copy' });
+          const at = { left: (m.p % opts.tilesPerRow) * cell, top: Math.floor(m.p / opts.tilesPerRow) * cell };
+          if (!p3) { comps.push({ input: await img.toBuffer(), ...at }); return; }
+          // P3 sheet: every thumb as raw Display P3 values, pasted on a P3 canvas whose profile is kept, so the
+          // values are not converted a second time
+          const { data, info } = await img.withIccProfile('p3').raw().toBuffer({ resolveWithObject: true });
+          comps.push({ input: data, raw: info, ...at });
         });
-        return sharp({ create: { width: opts.tilesPerRow * cell, height: rows * cell, channels: 3, background: cfg.theme.bg } })
-          .composite(comps).webp({ quality: cfg.thumbs.quality, effort: 5, smartSubsample: true }).toBuffer();
+        const canvas = sharp({ create: { width: opts.tilesPerRow * cell, height: rows * cell, channels: 3, background: cfg.theme.bg } });
+        const base = p3 ? sharp(await canvas.withIccProfile('p3').png().toBuffer()) : canvas;
+        const sheet = base.composite(comps);
+        return (p3 ? sheet.keepIccProfile() : sheet).webp({ quality: cfg.thumbs.quality, effort: 5, smartSubsample: true }).toBuffer();
       });
     }
   }
@@ -194,11 +218,12 @@ async function buildDetail(section, f, m, sizes = cfg.detail.widths, quality = c
     .sort((a, b) => a - b);
   const res = [];
   const key = crop ? `${aspect.toFixed(4)}${crop.position}` : '';
+  const wide = await isWideGamut(f);
   for (const w of widths) {
     const h = Math.round(w / aspect);
     const file = `img/${section}/${section === 'content' ? slugOf(f.id) : f.id}-${w}-${sha(f.fp + quality + key, 6)}.webp`;
-    await generateOnce(file, () => sharp(f.abs, SHARP_OPTS).rotate()
-      .resize(w, h, crop ? { fit: 'cover', position: crop.position } : {}).webp({ quality, effort: 5 }).toBuffer());
+    await generateOnce(file, () => toP3(sharp(f.abs, SHARP_OPTS).rotate()
+      .resize(w, h, crop ? { fit: 'cover', position: crop.position } : {}), wide).webp({ quality, effort: 5 }).toBuffer());
     res.push({ w, h, src: file });
   }
   return res;
@@ -258,8 +283,9 @@ async function buildSplash() {
         if (h > ch && sizes.length) continue; // never upscale (keep at least one size)
         if (sizes.some((x) => x.h === h)) continue;
         const file = `img/splash/${base}-${asp.name}-${h}-${fp}.webp`;
-        await generateOnce(file, () => sharp(f.abs, SHARP_OPTS).rotate().extract(crop)
-          .resize(w, h).webp({ quality: sc.quality, effort: 4 }).toBuffer());
+        const wide = await isWideGamut(f);
+        await generateOnce(file, () => toP3(sharp(f.abs, SHARP_OPTS).rotate().extract(crop)
+          .resize(w, h), wide).webp({ quality: sc.quality, effort: 4 }).toBuffer());
         sizes.push({ w, h, src: file });
       }
       sizes.sort((x, y) => x.h - y.h);
