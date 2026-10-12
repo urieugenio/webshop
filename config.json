@@ -20,6 +20,8 @@
 
   "content": {
     "folder": "content",
+    "file": "site.md",
+    "images": "images",
     "imageWidths": [480, 820, 1240, 1640],
     "landscapeMinAspect": 1.1,
     "cropAspect": 1.5,

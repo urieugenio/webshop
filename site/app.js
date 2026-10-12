@@ -119,7 +119,7 @@
         const items = S[key] || [];
         const sec = { key, el, items, thumbs: [], tier: 0, type: el.classList.contains('grid-square') ? 'square' : 'justified' };
         this.sections[key] = sec;
-        if (!items.length) { const n = el.parentElement.querySelector('.empty-note'); if (n) n.hidden = false; continue; }
+        if (!items.length) { const n = $(`.empty-note[data-for="${key}"]`); if (n) n.hidden = false; continue; }
         const frag = document.createDocumentFragment();
         items.forEach((it, i) => {
           const b = document.createElement('button');

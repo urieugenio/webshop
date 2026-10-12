@@ -48,11 +48,12 @@ function photos() {
     .sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
 }
 
-/** section ids of the site (#collection, #my-story …): a product name must not take one of those */
+/** section links of the site (#beanies, #my-story …, the "# Title" lines of site.md): a product name must not take one */
 function reservedSlugs() {
-  const dir = path.join(SRC, cfg.content?.folder || 'content');
-  const ids = fs.existsSync(dir) ? fs.readdirSync(dir).map((n) => /^\d+[ ._-]+(.+)\.md$/i.exec(n)).filter(Boolean).map((m) => slugify(m[1])) : [];
-  return [...new Set(['collection', 'gallery', 'home', ...ids])];
+  const c = cfg.content || {};
+  const file = path.join(SRC, c.folder || 'content', c.file || 'site.md');
+  const ids = fs.existsSync(file) ? [...fs.readFileSync(file, 'utf8').matchAll(/^#[ \t]+(.+?)[ \t#]*$/gm)].map((m) => slugify(m[1])) : [];
+  return [...new Set(['intro', 'home', 'beanies', 'scarves', 'gallery', ...ids])];
 }
 
 function pickName(used) {

@@ -78,13 +78,14 @@ html.menu-open .menu-scrim{opacity:1;pointer-events:auto}
 
 /* ---------------------------------------------------------------- sections */
 main,.footer{max-width:calc(var(--page-max) + 2*var(--margin));margin:0 auto;padding:0 var(--margin)}
-.section{padding:72px 0 24px}
+.section{padding:36px 0 12px}
 /* headings follow uri.eu: Arial, gold section titles with a soft shadow, subtitles with a short gold bar */
 .section>h1,.prose h1,.prose h2,.prose h3{font-family:Arial,"Helvetica Neue",Helvetica,sans-serif;font-style:normal;line-height:normal;letter-spacing:.6px}
 .section>h1{margin:0 0 20px;font-size:42px;font-weight:600;color:var(--accent);text-shadow:1px 1px 2px rgba(33,33,33,.5);scroll-margin-top:24px}
 .section{scroll-margin-top:0}
 .prose{color:var(--text);display:flow-root}
 .section>.prose+.grid,.section>.prose+.filters{margin-top:32px}
+.section>.grid~.prose{margin-top:32px}
 .prose ul{margin:0 0 1em;padding-left:1.2em}
 .prose li{margin:0 0 .3em}
 .prose strong{font-weight:400;color:#ececec}
@@ -116,7 +117,7 @@ main,.footer{max-width:calc(var(--page-max) + 2*var(--margin));margin:0 auto;pad
   main,.footer{padding:0 var(--margin-phone)}
   .section>h1,.prose,.empty-note{padding-left:12px;padding-right:12px}
   .section-img{width:calc(100% + 24px);max-width:none;margin:24px -12px}
-  .section{padding-top:56px}
+  .section{padding-top:28px}
 }
 
 /* ---------------------------------------------------------------- collection filters */

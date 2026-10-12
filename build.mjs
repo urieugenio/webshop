@@ -393,83 +393,91 @@ async function copyHashed(srcAbs, destDir, baseName) {
 }
 
 // ---------------------------------------------------------------- content sections
-// sources/content/<number>_<name>.md, e.g. 3_my_story.md
-//   - the number sets the order on the page (not shown); renumber the files to reorder
-//   - the first "# Title" line is the section heading and its menu entry; without one the
-//     section has no heading and stays out of the menu (used for the intro banner)
-//   - "collection" and "gallery" are followed by their thumbnail grid
-//   - one optional image per section: any file whose name ENDS with "-<name>" or "_<name>",
-//     e.g. ABCDE-contact.jpg or "Uri Eugenio_contact.png". Converted to webp in several widths.
-const CONTENT_MD = /^(\d+)[ ._-]+(.+)\.md$/i;
-const GRID_SECTIONS = new Set(['collection', 'gallery']);
-const IMG_MARKER = '<!--section-image-->\n';
+// sources/content/site.md holds the whole page below the splash:
+//   - every "# Title" line starts a section: its heading, its menu entry and its link (#title, e.g. #my-story)
+//   - text before the first "# Title" is the intro banner: no heading, not in the menu
+//   - ![description](picture.jpg) places a picture from sources/content/images, converted to webp in several
+//     widths; full column width, portrait and square pictures are cropped to landscape
+//   - a line with only {{beanies}}, {{scarves}} or {{gallery}} places that grid (beanies with its filters)
+// To reorder, add or remove sections: move, add or delete the text in site.md.
+const GRIDS = ['beanies', 'scarves', 'gallery'];
+const GRID_TAG = /^\{\{\s*([A-Za-z]+)\s*\}\}$/;
 
 const slugOf = (name) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 const capFirst = (s) => s.replace(/^(\s*)(\p{Ll})/u, (_, sp, c) => sp + c.toUpperCase());
+const marker = (s) => ({ type: 'html', block: true, pre: false, raw: `<!--${s}-->\n`, text: `<!--${s}-->\n` });
 
 async function buildContent() {
-  const dir = path.join(SRC, cfg.content?.folder || 'content');
-  if (!fs.existsSync(dir)) { log(`  ! content folder not found: ${dir}`); return []; }
-  const entries = fs.readdirSync(dir, { withFileTypes: true }).filter((d) => d.isFile());
-  const images = listImages(dir);
-  const sections = [];
+  const c = cfg.content || {};
+  const dir = path.join(SRC, c.folder || 'content');
+  const file = path.join(dir, c.file || 'site.md');
+  if (!fs.existsSync(file)) { log(`  ! ${file} not found: the page has no sections`); return []; }
+  const imgDir = path.join(dir, c.images || 'images');
+  const pictures = new Map(listImages(imgDir).map((f) => [f.name.toLowerCase(), f]));
+  const usedPictures = new Set();
 
-  const mds = entries.map((d) => ({ d, m: CONTENT_MD.exec(d.name) })).filter((x) => x.m)
-    .map(({ d, m }) => ({ file: d.name, order: Number(m[1]), name: m[2] }))
-    .sort((a, b) => a.order - b.order || a.name.localeCompare(b.name));
-
-  // each image belongs to the section whose name its file name ends with ("-", "_" and spaces are
-  // interchangeable, case is ignored). The longest name wins, so "x-my_story.jpg" goes to my_story, not story.
-  const ids = [...new Set(mds.map((s) => slugOf(s.name)))].sort((a, b) => b.length - a.length);
-  const imageOwner = new Map();
-  for (const f of images) {
-    const n = '-' + slugOf(f.id);
-    const owner = ids.find((id) => n.endsWith('-' + id));
-    if (owner) imageOwner.set(f.name, owner);
+  // split at the "# Title" lines (with marked's lexer, so a "#" inside a code block does not count)
+  const tokens = marked.lexer((await fsp.readFile(file, 'utf8')).replace(/^﻿/, ''));
+  const parts = [{ title: null, tokens: [] }];
+  for (const t of tokens) {
+    if (t.type === 'heading' && t.depth === 1) parts.push({ title: capFirst(t.text.trim()), tokens: [] });
+    else parts[parts.length - 1].tokens.push(t);
   }
 
+  const sections = [];
   const usedIds = new Set();
-  for (const s of mds) {
-    let id = slugOf(s.name) || `section-${s.order}`;
-    if (usedIds.has(id)) { log(`  ! two sections are called "${id}" — ${s.file} is skipped`); continue; }
+  for (const [n, p] of parts.entries()) {
+    if (!p.title && !p.tokens.some((t) => t.type !== 'space')) continue; // no intro text
+    const base = p.title ? slugOf(p.title) || `section-${n}` : 'intro';
+    let id = base;
+    for (let k = 2; usedIds.has(id); k++) id = `${base}-${k}`;
+    if (id !== base) log(`  ! two sections are called "${p.title}"; the second one links as #${id}`);
     usedIds.add(id);
 
-    let md = (await fsp.readFile(path.join(dir, s.file), 'utf8')).replace(/^﻿/, '');
-    let title = null;
-    md = md.replace(/^[ \t]*#[ \t]+(.+?)[ \t#]*$/m, (_, t) => { if (title === null) { title = capFirst(t.trim()); return ''; } return _; });
+    // grids: a paragraph that is only {{name}}
+    const grids = [];
+    const body = [];
+    for (const t of p.tokens) {
+      const g = t.type === 'paragraph' && GRID_TAG.exec(t.text.trim());
+      if (!g) { body.push(t); continue; }
+      const name = g[1].toLowerCase();
+      if (!GRIDS.includes(name)) { log(`  ! ${id}: unknown grid {{${g[1]}}} (there are: ${GRIDS.map((x) => `{{${x}}}`).join(' ')})`); continue; }
+      grids.push(name);
+      body.push(marker(`grid:${name}`));
+    }
 
-    const matches = images.filter((f) => imageOwner.get(f.name) === id);
-    let image = null;
-    if (matches.length) {
-      if (matches.length > 1) log(`  ! ${id}: more than one image (${matches.map((f) => f.name).join(', ')}); using ${matches[matches.length - 1].name}`);
-      const f = matches[matches.length - 1];
+    // pictures: every ![description](file) with a file in the images folder (links to other sites stay as they are)
+    const found = [];
+    const walk = (list) => { for (const t of list || []) { if (t.type === 'image') found.push(t); walk(t.tokens); if (t.items) for (const it of t.items) walk(it.tokens); } };
+    walk(body);
+    const images = [];
+    for (const t of found) {
+      if (/^[a-z][a-z0-9+.-]*:/i.test(t.href)) continue;
+      const name = decodeURIComponent(t.href).split(/[\\/]/).pop();
+      const f = pictures.get(name.toLowerCase());
+      if (!f) {
+        log(`  ! ${id}: picture "${name}" not found in ${path.relative(SRC, imgDir)}`);
+        Object.assign(t, { type: 'html', block: false, text: '' });
+        continue;
+      }
+      usedPictures.add(f.name);
       const m = await imageMeta(f);
-      const c = cfg.content || {};
-      // full column width, always landscape: portrait and square pictures are cropped to cropAspect
-      const minA = c.landscapeMinAspect || 1.1;
-      const crop = m.w / m.h < minA ? { aspect: c.cropAspect || 1.5, position: c.cropPosition || 'north' } : null;
+      const crop = m.w / m.h < (c.landscapeMinAspect || 1.1) ? { aspect: c.cropAspect || 1.5, position: c.cropPosition || 'north' } : null;
       const d = await buildDetail('content', f, m, c.imageWidths || [480, 820, 1240, 1640], c.imageQuality || cfg.detail.quality, crop);
       const top = d[d.length - 1];
-      image = { name: f.name, w: top.w, h: top.h, color: m.color, cropped: !!crop, d };
+      images.push({ name: f.name, alt: t.text, w: top.w, h: top.h, color: m.color, cropped: !!crop, d });
+      Object.assign(t, { type: 'html', block: false, text: `<!--image:${images.length - 1}-->` });
     }
 
-    // the picture goes right after the first paragraph (or after the first block if there is no paragraph)
-    const tokens = marked.lexer(md.trim());
-    if (image) {
-      let at = tokens.findIndex((t) => t.type === 'paragraph');
-      if (at < 0) at = tokens.findIndex((t) => t.type !== 'space');
-      const marker = { type: 'html', block: true, pre: false, raw: IMG_MARKER, text: IMG_MARKER };
-      tokens.splice(at + 1, 0, marker);
-    }
-    const html = marked.parser(tokens);
-    sections.push({ id, order: s.order, file: s.file, title, html, image, grid: GRID_SECTIONS.has(id) ? id : null });
-    log(`  ${String(s.order).padStart(2)} ${id}${title ? ` "${title}"` : ' (no title)'}${image ? ` + ${image.name}${image.cropped ? ' (cropped to landscape)' : ''}` : ''}${GRID_SECTIONS.has(id) ? ' + grid' : ''}`);
+    body.links = tokens.links; // reference-style links ([text][ref]) defined anywhere in the file
+    const html = marked.parser(body);
+    sections.push({ id, title: p.title, html, images, grids });
+    log(`  ${id}${p.title ? ` "${p.title}"` : ' (intro, no title)'}` +
+      images.map((im) => ` + ${im.name}${im.cropped ? ' (cropped to landscape)' : ''}`).join('') +
+      grids.map((g) => ` + {{${g}}}`).join(''));
   }
-  // the image file names that matched nothing are probably a typo; say so
-  for (const f of images) {
-    const used = sections.some((s) => s.image && s.image.name === f.name);
-    if (!used) log(`  ! ${f.name} does not belong to any section (name it <anything>-<section>.jpg)`);
-  }
+  // pictures that are not used anywhere are probably a typo in site.md; say so
+  for (const f of pictures.values()) if (!usedPictures.has(f.name)) log(`  ! ${f.name} is not used in ${path.basename(file)}`);
   return sections;
 }
 
