@@ -50,10 +50,10 @@
 
   const swatch = (name) => (S.palette.find((p) => p.name === name) || {}).hex;
 
-  /** a colour dot: the palette colour, with a rainbow half for multicoloured pieces */
+  /** a colour dot: the palette colour, with a rainbow half for multicoloured pieces; all rainbow when there is no main colour */
   function dot(color, multi) {
     const d = document.createElement('span');
-    d.className = 'dot' + (multi ? ' multi' : '') + (color || multi ? '' : ' none');
+    d.className = 'dot' + (multi ? ' multi' : '') + (multi && !color ? ' all' : '') + (color || multi ? '' : ' none');
     if (color) d.style.setProperty('--sw', swatch(color));
     return d;
   }
@@ -72,7 +72,7 @@
   function fillTile(el, it) {
     $('.name', el).replaceChildren(dot(it.color, it.multi), it.name);
     $('.attrs', el).textContent = caption(it);
-    el.title = `${it.name} — ${it.file} — ${it.color || 'no colour'}${it.multi ? ', ' + S.multiLabel : ''}${it.colorByHand ? ' (set by hand)' : ''}`;
+    el.title = `${it.name} — ${it.file} — ${it.color || 'no main colour'}${it.multi ? ', ' + S.multiLabel : ''}${it.colorByHand ? ' (set by hand)' : ''}`;
     el.hidden = !matches(it);
   }
 
@@ -213,7 +213,7 @@
     }
     measured = null;
     const colorSel = $('[name=color]', dlg);
-    colorSel.replaceChildren(new Option('—', ''), ...S.palette.map((p) => new Option(p.name, p.name)));
+    colorSel.replaceChildren(new Option('none (many colours)', ''), ...S.palette.map((p) => new Option(p.name, p.name)));
     colorSel.value = it.color || '';
     $('[name=multi]', dlg).checked = !!it.multi;
     colorNote(it);

@@ -154,6 +154,7 @@
       const hex = (S.colors?.palette || []).find((p) => p.name === it.color)?.hex;
       if (hex) dot.style.setProperty('--sw', hex);
       if (it.multi) dot.classList.add('multi');
+      if (it.multi && !hex) dot.classList.add('all'); // many colours, no main colour: all rainbow
       if (!hex && !it.multi) dot.remove();
       $('.nm', cap).textContent = label(it);
       $('.pr', cap).textContent = money(it.price);

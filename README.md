@@ -58,7 +58,13 @@ Double-click **`run.bat`**, or from a terminal in `D:\Webshop\code`:
 node build.mjs            build / update dist (only changed objects are regenerated)
 node build.mjs --serve    build, then serve the site on http://localhost:8080
 node build.mjs --clean    throw away dist and the cache, rebuild everything
+node build.mjs --serve --lan   the same as --serve, and also reachable from a phone on the same network
 ```
+
+**On your phone:** double-click **`serve-lan.bat`**. It builds the site and prints an address such as
+`http://192.168.2.12:8080/`; open that on a phone or tablet on the same wifi. The address comes from the router
+(DHCP), so it can change from day to day: always use the one printed. The first time, Windows may ask whether Node.js
+may communicate on networks: allow it for **private** networks. Without `--lan` the site is only reachable from this computer.
 
 The first build takes about two minutes (the large splash masters are the slow part). After that a run with
 no changes takes under a second. The end of each run prints how many objects were new, changed or deleted.

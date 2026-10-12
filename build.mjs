@@ -4,6 +4,7 @@
 //   node build.mjs            build / update dist/ (only changed objects are regenerated)
 //   node build.mjs --clean    throw away dist/ and the cache, then build from scratch
 //   node build.mjs --serve    build, then serve dist/ on http://localhost:8080
+//   node build.mjs --serve --lan   the same, and on the local network for a phone (the addresses are printed)
 //   node build.mjs --publish  (phase 2) build and push changed objects to Cloudflare Pages
 //   options: --sources=<folder>  --out=<folder>   (override config.json)
 //
@@ -14,6 +15,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import http from 'node:http';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 import { marked } from 'marked';
@@ -483,7 +485,8 @@ async function cleanupAndManifest() {
 }
 
 // ---------------------------------------------------------------- serve (handy alternative to file://)
-function serve(port = 8080) {
+// lan: also reachable from other devices on the local network (a phone on the same wifi)
+function serve(port = 8080, lan = false) {
   const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml',
     '.webp': 'image/webp', '.woff': 'font/woff', '.woff2': 'font/woff2', '.json': 'application/json', '.jpg': 'image/jpeg', '.png': 'image/png' };
   http.createServer((req, res) => {
@@ -493,7 +496,16 @@ function serve(port = 8080) {
     if (!abs.startsWith(OUT) || !fs.existsSync(abs)) { res.writeHead(404); return res.end('not found'); }
     res.writeHead(200, { 'Content-Type': types[path.extname(abs)] || 'application/octet-stream' });
     fs.createReadStream(abs).pipe(res);
-  }).listen(port, () => log(`\nServing ${OUT}\n  -> http://localhost:${port}/   (Ctrl+C to stop)`));
+  }).listen(port, lan ? '0.0.0.0' : '127.0.0.1', () => {
+    log(`\nServing ${OUT}\n  -> http://localhost:${port}/   (Ctrl+C to stop)`);
+    if (!lan) return;
+    // the private (DHCP/NAT) addresses of this computer: open one of these on a phone on the same network
+    const ips = Object.values(os.networkInterfaces()).flat()
+      .filter((a) => a && a.family === 'IPv4' && !a.internal && /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(a.address))
+      .map((a) => a.address);
+    if (!ips.length) log('  ! no local network address found: is this computer connected to a network?');
+    for (const ip of ips) log(`  -> http://${ip}:${port}/   (from a phone or tablet on the same network)`);
+  });
 }
 
 // ---------------------------------------------------------------- main
@@ -557,7 +569,7 @@ async function main() {
   log(`\nOpen: ${path.join(OUT, 'index.html')}`);
 
   if (args.has('--publish')) log('\n--publish: Cloudflare publishing is added in phase 2.');
-  if (args.has('--serve')) serve();
+  if (args.has('--serve')) serve(Number(argVal('--port')) || 8080, args.has('--lan'));
 }
 
 main().catch((e) => { console.error('\nBUILD FAILED:', e.stack || e); process.exit(1); });

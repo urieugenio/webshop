@@ -113,7 +113,8 @@
       "region": [0.30, 0.08, 0.80, 0.22],
       "multiRegions": [[0.30, 0.08, 0.80, 0.22], [0.47, 0.22, 0.80, 0.58]],
       "multiDelta": 18.3,
-      "multiShare": 0.1
+      "multiShare": 0.1,
+      "noMainColours": 4
     }
   },
 
