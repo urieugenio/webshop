@@ -14,9 +14,11 @@ D:\Webshop\
 │   ├── site\      front-end css + js (copied into the build with a hash in the name)
 │   ├── assets\    fonts
 │   ├── samples\   example markdown
+│   ├── tools\     pre-commit check against secret keys (see "Git" below)
 │   └── node_modules\   (not in git; recreated by "npm install")
-├── content\   ← local only, never in git
+├── content\
 │   ├── sources\   everything the build reads: logo, splash, collection, gallery, content pages, attributes.txt, collection.json
+│   │              ← its own git repository (github.com/urieugenio/webshop-content): the texts and data, not the pictures
 │   ├── design\    poster, layout samples, logo artwork, mockups
 │   └── prompts\   working notes / prompts
 └── build\     ← generated, never in git, safe to delete (a rebuild recreates it)
@@ -24,7 +26,7 @@ D:\Webshop\
     └── cache\     build cache: sizes, colours, thumbnail slots, publish manifest
 ```
 
-The three folders are siblings, so git can only ever see `code`. Paths to the other two are set in
+The three folders are siblings, so the code repository can only ever see `code`. Paths to the other two are set in
 `config.json` (`sourcesDir`, `outDir`, `cacheDir`) and can be overridden per run with `--sources=` / `--out=`.
 
 ## 1. One-time setup
@@ -49,6 +51,33 @@ git push -u origin main
 
 If the GitHub repository was created with a README or licence, run `git pull --rebase origin main` before the push.
 `git status` should never list photos, `dist` or `node_modules`; if it does, something ended up inside `code` by mistake.
+
+### Git (content)
+
+`content\sources` is a second repository with the texts and product data: `content\*.md`, `collection.json`
+(written by the backoffice), `attributes.txt` and `logo.svg`. Its `.gitignore` leaves out the picture folders
+(`splash`, `gallery`, `collection`) and every jpg/png/psd, so only text is versioned; the pictures are backed up
+separately (the raw files in Lightroom are the master). After editing texts or a session in the backoffice:
+
+```
+cd D:\Webshop\content\sources
+git add -A
+git commit -m "what changed"
+git push
+```
+
+`git log -p collection.json` shows every change to the product data.
+
+### No secrets in git
+
+Both repositories are **public**. Stripe and Cloudflare keys belong in `code\.env` (ignored by git) or in the
+Stripe/Cloudflare dashboards, never in a committed file. A check in both repositories refuses any commit that adds
+a `.env`/key file or something that looks like a Stripe secret key (`sk_…`, `rk_…`, `whsec_…`), a Cloudflare token
+or a private key. Git does not copy such checks along with a repository, so after cloning either repository run once:
+
+```
+node tools\install-hooks.mjs
+```
 
 ## 2. Building
 

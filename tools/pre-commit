@@ -1,0 +1,37 @@
+#!/bin/sh
+# Git pre-commit check: refuse a commit that would add a secret (both webshop repositories are public).
+# Installed by: node tools/install-hooks.mjs   (copies this file to .git/hooks/pre-commit of both repositories)
+# In an emergency, a commit can skip it with "git commit --no-verify" -- never do that for a real key.
+
+fail=0
+
+# 1. files that hold secrets by convention
+for f in $(git diff --cached --name-only --diff-filter=ACMR); do
+  case "$f" in
+    .env.example|*/.env.example) ;;
+    .env|.env.*|*/.env|*/.env.*|*.pem|*.key|*.p12|*.pfx|*secret*|*credentials*)
+      echo "pre-commit: refusing to commit '$f': files like this hold secrets." ; fail=1 ;;
+  esac
+done
+
+# 2. added lines that look like a key or token
+#    Stripe secret / restricted keys and webhook secrets (publishable pk_ keys are public by design and allowed),
+#    Cloudflare API tokens given a value, private keys
+added=$(git diff --cached -U0 --no-color | grep '^+' | grep -v '^+++')
+hits=$(printf '%s\n' "$added" | grep -nE \
+  -e '(sk|rk)_(live|test)_[0-9A-Za-z]{8,}' \
+  -e 'whsec_[0-9A-Za-z]{8,}' \
+  -e '(CLOUDFLARE|CF)_(API_)?(TOKEN|KEY)[[:space:]]*[=:][[:space:]]*["'"'"']?[0-9A-Za-z_-]{20,}' \
+  -e 'Bearer [0-9A-Za-z_-]{30,}' \
+  -e '-----BEGIN [A-Z ]*PRIVATE KEY-----')
+if [ -n "$hits" ]; then
+  echo "pre-commit: this commit adds what looks like a secret key or token:"
+  printf '%s\n' "$hits" | cut -c1-120
+  fail=1
+fi
+
+if [ $fail -ne 0 ]; then
+  echo "pre-commit: commit refused. Keep keys in code\\.env (never committed) or in the Cloudflare/Stripe dashboards."
+  exit 1
+fi
+exit 0
