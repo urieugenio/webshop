@@ -240,6 +240,27 @@ the filter hides.
 - add a section (e.g. `[colour]`) to add an attribute; removing a value from the list does not change pieces that already have it
   (the backoffice shows it as "not in attributes.txt").
 
+## 4b. Printed card for the box (`booklet.mjs`)
+
+One 140 × 200 mm card per product for the back of the box (the front carries the splash picture with the logo):
+the photo full-bleed at the top, then name, model, material, thickness, size, care, how to wear, "stay in touch"
+(website, email, Instagram), a thank you with "Handmade in Amsterdam", and a line for Uri's signature.
+
+```
+node booklet.mjs                       every product, in the order of the site
+node booklet.mjs --only=Nancy,Pavia    just these products
+```
+
+It writes to `D:\Webshop\build\print`:
+
+- `booklet-A4-proof.pdf`: one card (with its 5 mm bleed) per A4 sheet, with crop marks, for proof prints at home;
+- `booklet-SRA3-4up.pdf`: four cards per SRA3 sheet (320 × 450 mm) with crop marks, for the print shop.
+
+The photos come from `collection-print` (Lightroom export in **Adobe RGB**, same file names as `collection`). They
+are embedded unconverted with their Adobe RGB profile, at 300 dpi; the dark background is widened a little so the
+trim never cuts into a beanie. Fonts: Lato (as on the site; the website
+address is Lato Regular with a thin outline, as there is no Lato Bold) and Great Vibes (`assets\fonts`, OFL licence).
+
 ## 5. Tuning (`config.json`)
 
 All tunables are in `config.json`, and the front-end reads them from the generated data file. A tuning panel can drive the same values later.
