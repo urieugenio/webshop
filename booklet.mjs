@@ -166,9 +166,9 @@ async function buildBooklet() {
 
     // care / how to wear / contact
     const cols = [
-      ['Care', wrap(CARE, light, 8, 37), 41],
+      ['Care', wrap(CARE, light, 8, 50), 55],          // wide enough for the care text in three lines
       ['How to wear', wrap(WEAR, light, 8, 31), 37],
-      ['Stay in touch', [], 38],
+      ['Stay in touch', [], 24],                       // starts under SIZE
     ];
     x = MARGIN;
     for (const [k, lines, w] of cols) {
@@ -176,7 +176,7 @@ async function buildBooklet() {
       lines.forEach((l, j) => text(l, x, 161.5 + j * 3.9, light, 8));
       x += w;
     }
-    const contactX = MARGIN + 41 + 37;
+    const contactX = MARGIN + 55 + 37;
     [['website', CONTACT.website, true], ['email', CONTACT.email], ['instagram', CONTACT.instagram]].forEach(([k, v, bold], j) => {
       const y = 161.5 + j * 3.9;
       icon(k, contactX, y, GREY);
