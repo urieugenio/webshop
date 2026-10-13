@@ -28,7 +28,7 @@ const OUT = path.resolve(ROOT, cfg.outDir, '..', 'print');
 const PHOTOS = path.join(SRC, 'collection-print');
 
 const CONTACT = { email: 'uri@uri.eu', website: 'uri.fashion', instagram: '@urieugenio' };
-const CARE = 'Wash your beanie by hand using a wool-safe detergent, then lay it flat to air dry.';
+const CARE = 'Hand wash at max. 30 °C with a wool-safe detergent. Don’t rub or wring; gently press out the water and lay flat to air dry.';
 const WEAR = 'Always wear the beanie with the label on the left side (see picture).';
 const MADE = 'Handmade in Amsterdam';
 
