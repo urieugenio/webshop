@@ -46,8 +46,6 @@ const BLACK = rgb(0, 0, 0);
 const BODY = { size: 8.6, lead: 4.25 };   // pt, mm
 const H1 = 25, H2 = 6.4, TAGLINE = 6.2, SCRIPT = 20, CAPTION = 7.4, FOLIO = 6.6;
 const PHOTO_DPI = 300;
-const PRINTER_EDGE = 5;    // a laser printer leaves about 4 mm at the edges of the sheet unprinted
-const FULLPAGE_CAPTION_ROOM = 13;  // a {{fullpage}} picture with a caption ends this far above the foot
 // grey mix for the picture: mostly blue, so the purple backdrop turns light and the green clothes dark
 const PHOTO_MIX = [0.25, 0, 0.75];
 const PHOTO_WHITE = 152;   // mixed grey at and above this becomes paper white
@@ -116,10 +114,15 @@ function drawOutlined(page, font, str, x, y, size, color) {
 }
 const scriptWidth = (font, str, size) => ptMm((font.layout(str).advanceWidth * size) / font.unitsPerEm);
 
-/** Grey picture for a laser printer: blue-weighted mix, background to white, shadows lifted, 300 dpi. */
-async function laserPhoto(file, wMm) {
+function findPhoto(file) {
   const abs = PHOTO_DIRS.map((d) => path.join(d, file)).find((f) => fs.existsSync(f));
   if (!abs) throw new Error(`booklet.md: picture ${file} not found in ${PHOTO_DIRS.join(' or ')}`);
+  return abs;
+}
+
+/** Grey picture for a laser printer: blue-weighted mix, background to white, shadows lifted, 300 dpi. */
+async function laserPhoto(file, wMm) {
+  const abs = findPhoto(file);
   const grey = await sharp(abs).rotate().resize(Math.round((wMm / 25.4) * PHOTO_DPI))
     .recomb([PHOTO_MIX, PHOTO_MIX, PHOTO_MIX]).toColourspace('b-w').raw().toBuffer({ resolveWithObject: true });
   const lut = Buffer.alloc(256);
@@ -173,28 +176,6 @@ async function buildPages() {
   for (const [i, blocks] of pages.entries()) {
     const n = i + 1;
     const page = doc.addPage([mm(PAGE.w), mm(PAGE.h)]);
-    const full = blocks.find((b) => b.type === 'fullpage');
-    if (full) {
-      // a picture made for the page, embedded untouched: it runs into the spine and the head (cut), and keeps clear of
-      // the outer edge and the foot, which are the edges of the sheet the printer cannot reach
-      const abs = PHOTO_DIRS.map((d) => path.join(d, full.arg)).find((f) => fs.existsSync(f));
-      if (!abs) throw new Error(`booklet.md: picture ${full.arg} not found in ${PHOTO_DIRS.join(' or ')}`);
-      const img = await doc.embedJpg(fs.readFileSync(abs));
-      const k = Math.min((PAGE.w - PRINTER_EDGE) / img.width, (PAGE.h - PRINTER_EDGE) / img.height);
-      const w = img.width * k, h = img.height * k, x = n % 2 ? 0 : PAGE.w - w;
-      // with a caption the picture moves up to make room for it at the foot; its top runs off the page (keep it white)
-      const bottom = full.caption ? FULLPAGE_CAPTION_ROOM : PAGE.h - h;
-      page.drawImage(img, { x: mm(x), y: mm(bottom), width: mm(w), height: mm(h) });
-      wrap([{ text: full.caption, style: 'italic' }], w - 10, CAPTION).forEach((l, j) => {
-        let cx = x + (w - l.w) / 2;
-        const base = bottom - 5 - j * ptMm(CAPTION) * 1.4;
-        l.words.forEach((wd, i) => {
-          if (i) cx += spaceW('italic', CAPTION);
-          for (const p of wd.parts) { page.drawText(p.text, { x: mm(cx), y: mm(base), font: fonts.italic, size: CAPTION, color: BLACK }); cx += partW(p, CAPTION); }
-        });
-      });
-      continue;
-    }
     const left = n % 2 ? M.spine : M.outer;            // odd pages are right-hand pages: spine on the left
     const centred = blocks.some((b) => b.type === 'logo');
     const X = (x) => mm(left + x);
@@ -226,7 +207,7 @@ async function buildPages() {
     for (const b of blocks) {
       const gap = !prev || prev === 'space' ? 0
         : { h1: 6, h2: prev === 'h1' ? 3.2 : 4.2, p: prev === 'h2' ? 1.2 : prev === 'h1' ? 2.5 : 2.2, li: prev === 'li' ? 0.8 : 1.5,
-            logo: 3, tagline: 2.2, script: 2.5, photo: 3 }[b.type] ?? 0;
+            logo: 3, tagline: 2.2, script: 2.5, photo: 3, fullpage: 3 }[b.type] ?? 0;
       prev = b.type;
       if (b.type === 'space') { items.push({ space: true, h: 0, gap: 0 }); continue; }
       if (b.type === 'p' || b.type === 'li') {
@@ -253,9 +234,10 @@ async function buildPages() {
       } else if (b.type === 'script') {
         const size = Math.min(SCRIPT, (W / scriptWidth(script, b.arg, SCRIPT)) * SCRIPT);
         items.push({ gap, h: ptMm(size) * 1.3, draw: (top) => drawOutlined(page, script, b.arg, X(alignX(scriptWidth(script, b.arg, size))), Y(top + ptMm(size) * 0.85), size, BLACK) });
-      } else if (b.type === 'photo') {
-        const { jpg, aspect } = await laserPhoto(b.arg, W);
-        const img = await doc.embedJpg(jpg);
+      } else if (b.type === 'photo' || b.type === 'fullpage') {
+        // {{photo}} is converted for the laser printer, {{fullpage}} is a picture already made for print and used unchanged
+        const img = await doc.embedJpg(b.type === 'photo' ? (await laserPhoto(b.arg, W)).jpg : fs.readFileSync(findPhoto(b.arg)));
+        const aspect = img.width / img.height;
         const capLines = b.caption ? wrap([{ text: b.caption, style: 'italic' }], W, CAPTION) : [];
         const capH = capLines.length ? 2.5 + capLines.length * ptMm(CAPTION) * 1.4 : 0;
         items.push({ gap, photo: true, aspect, capH, h: 0, draw: (top, h) => {
