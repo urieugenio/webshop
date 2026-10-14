@@ -120,6 +120,15 @@ function findPhoto(file) {
   return abs;
 }
 
+/** Where the picture starts to print: the first row with a pixel that is not paper white, as a fraction of its height. */
+async function firstInkRow(jpg) {
+  const { data, info } = await sharp(jpg).greyscale().resize({ width: 400 }).raw().toBuffer({ resolveWithObject: true });
+  for (let y = 0; y < info.height; y++) {
+    for (let x = 0; x < info.width; x++) if (data[y * info.width + x] < 240) return y / info.height;
+  }
+  return 0;
+}
+
 /** Grey picture for a laser printer: blue-weighted mix, background to white, shadows lifted, 300 dpi. */
 async function laserPhoto(file, wMm) {
   const abs = findPhoto(file);
@@ -236,11 +245,15 @@ async function buildPages() {
         items.push({ gap, h: ptMm(size) * 1.3, draw: (top) => drawOutlined(page, script, b.arg, X(alignX(scriptWidth(script, b.arg, size))), Y(top + ptMm(size) * 0.85), size, BLACK) });
       } else if (b.type === 'photo' || b.type === 'fullpage') {
         // {{photo}} is converted for the laser printer, {{fullpage}} is a picture already made for print and used unchanged
-        const img = await doc.embedJpg(b.type === 'photo' ? (await laserPhoto(b.arg, W)).jpg : fs.readFileSync(findPhoto(b.arg)));
+        const jpg = b.type === 'photo' ? (await laserPhoto(b.arg, W)).jpg : fs.readFileSync(findPhoto(b.arg));
+        const img = await doc.embedJpg(jpg);
         const aspect = img.width / img.height;
+        const inkTop = await firstInkRow(jpg);
         const capLines = b.caption ? wrap([{ text: b.caption, style: 'italic' }], W, CAPTION) : [];
         const capH = capLines.length ? 2.5 + capLines.length * ptMm(CAPTION) * 1.4 : 0;
-        items.push({ gap, photo: true, aspect, capH, h: 0, draw: (top, h) => {
+        // the caption as printed ends at the descenders of its last line, not at the end of its line spacing
+        const capInk = capLines.length ? 2.5 + (capLines.length - 1) * ptMm(CAPTION) * 1.4 + ptMm(CAPTION) * 1.05 : 0;
+        items.push({ gap, photo: true, aspect, capH, capInk, inkTop, h: 0, draw: (top, h) => {
           const w = Math.min(W, h * aspect), ph = w / aspect;
           page.drawImage(img, { x: X((W - w) / 2), y: Y(top + ph), width: mm(w), height: mm(ph) });
           drawCaption(capLines, top + ph + 2.5 + ptMm(CAPTION) * 0.85);
@@ -263,7 +276,10 @@ async function buildPages() {
     const used = items.reduce((s, it) => s + it.gap + it.h + (it.photo ? it.capH : 0), 0);
     const spaces = items.filter((x) => x.space).length;
     if (used > H + 0.01) console.warn(`  page ${n}: ${(used - H).toFixed(1)} mm too long`);
-    let y = 0;
+    // a picture alone on its page: what is printed of it (from its first non-white row) plus the caption is centred
+    // in the type area; the white above may run into the head margin
+    const alone = items.length === 1 && items[0].photo ? items[0] : null;
+    let y = alone ? (H - (alone.h * (1 - alone.inkTop) + alone.capInk)) / 2 - alone.h * alone.inkTop : 0;
     for (const it of items) {
       y += it.gap;
       if (it.space) { y += Math.max(0, H - used) / spaces; continue; }
