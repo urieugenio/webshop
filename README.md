@@ -133,6 +133,7 @@ Two notes:
 | `gallery/*.jpg` | gallery pictures, any aspect ratio. **Create this folder** — while it is missing, the gallery says "new pictures coming soon" |
 | `content/site.md` | the whole page below the splash: all sections, see **The page: site.md** below |
 | `content/images/` | the pictures used in `site.md` |
+| `content/booklet.md` | the 8-page booklet in the box (see **4c**) |
 
 **Colour profile of the photos.** Export from Lightroom in **Display P3** (Export → File Settings → Color Space) for
 the most faithful colours on iPhones, iPads, Macs and recent Android phones. sRGB cannot show saturated turquoise and
@@ -260,6 +261,33 @@ The photos come from `collection-print` (Lightroom export in **Adobe RGB**, same
 are embedded unconverted with their Adobe RGB profile, at 300 dpi; the dark background is widened a little so the
 trim never cuts into a beanie. Fonts: Lato (as on the site; the website
 address is Lato Regular with a thin outline, as there is no Lato Bold) and Great Vibes (`assets\fonts`, OFL licence).
+
+## 4c. Booklet in the box (`story-booklet.mjs`)
+
+An 8-page A6 booklet (105 × 148.5 mm) from **one A4 sheet**, printed double-sided in black only on a monochrome
+laser printer: congratulations, my story, care, contact. The text is `content\sources\content\booklet.md` (next to
+`site.md`); the comment at its top explains the format (`---` starts a page, `{{logo}}`, `{{photo …}}`, …).
+The logo is "Uri Eugenio" in Great Vibes, drawn as outlines; no image files.
+
+```
+node story-booklet.mjs                 printer set to flip on the long edge (the usual duplex setting)
+node story-booklet.mjs --flip=short    printer set to flip on the short edge
+```
+
+It writes to `D:\Webshop\build\print`:
+
+- `story-booklet-A4-duplex.pdf`: the two sides of the sheet. Print double-sided at **actual size** (100 %, not "fit to page");
+- `story-booklet-pages.pdf`: the 8 pages in reading order, to read on screen.
+
+Folding: hold the sheet with the cover (Uri Eugenio) bottom right, facing you. Fold the top half **backwards** onto
+the bottom half (the fold parallel to the short edge), then fold the left half **backwards** onto the right half: the
+cover is on the front, the second fold is the spine. Cut open the first fold (the top edge of the booklet), and
+staple twice through the spine. The script reports a page with too much text, and pages with a lot of room left.
+
+The picture (`{{photo 0E2A5319.jpg}}`, from `gallery` or `content\images`) is converted for the laser printer: a grey
+mix that is mostly the blue channel (so the purple backdrop turns light and the green outfit dark), the background
+pushed to paper white, the deepest shadows lifted a little (a laser printer fills them in), 300 dpi.
+Tune with `PHOTO_MIX`, `PHOTO_WHITE` and `PHOTO_BLACK` at the top of the script. Without `{{photo …}}` no image is used.
 
 ## 5. Tuning (`config.json`)
 
