@@ -284,10 +284,15 @@ the bottom half (the fold parallel to the short edge), then fold the left half *
 cover is on the front, the second fold is the spine. Cut open the first fold (the top edge of the booklet), and
 staple twice through the spine. The script reports a page with too much text, and pages with a lot of room left.
 
-The picture (`{{photo 0E2A5319.jpg}}`, from `gallery` or `content\images`) is converted for the laser printer: a grey
-mix that is mostly the blue channel (so the purple backdrop turns light and the green outfit dark), the background
-pushed to paper white, the deepest shadows lifted a little (a laser printer fills them in), 300 dpi.
-Tune with `PHOTO_MIX`, `PHOTO_WHITE` and `PHOTO_BLACK` at the top of the script. Without `{{photo …}}` no image is used.
+Pictures come from `gallery` or `content\images`, in two ways:
+
+- `{{fullpage beanies_A6_600dpi_grayscale2.jpg}}`: a picture already made for the page (A6, 105 × 148.5 mm, grey,
+  white background) is placed unchanged and fills the page. It runs into the spine and the head (which is cut), and
+  stops 5 mm short of the outer edge and the foot, the edges of the sheet a laser printer cannot reach (`PRINTER_EDGE`);
+- `{{photo 0E2A5319.jpg}} caption`: a colour photo between the text, converted for the laser printer: a grey mix that
+  is mostly the blue channel (for 0E2A5319 the purple backdrop turns light and the green outfit dark), the background
+  pushed to paper white, the deepest shadows lifted a little (a laser printer fills them in), 300 dpi. Tune with
+  `PHOTO_MIX`, `PHOTO_WHITE` and `PHOTO_BLACK` at the top of the script.
 
 ## 5. Tuning (`config.json`)
 

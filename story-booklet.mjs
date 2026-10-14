@@ -46,6 +46,7 @@ const BLACK = rgb(0, 0, 0);
 const BODY = { size: 8.6, lead: 4.25 };   // pt, mm
 const H1 = 25, H2 = 6.4, TAGLINE = 6.2, SCRIPT = 20, CAPTION = 7.4, FOLIO = 6.6;
 const PHOTO_DPI = 300;
+const PRINTER_EDGE = 5;    // a laser printer leaves about 4 mm at the edges of the sheet unprinted
 // grey mix for the picture: mostly blue, so the purple backdrop turns light and the green clothes dark
 const PHOTO_MIX = [0.25, 0, 0.75];
 const PHOTO_WHITE = 152;   // mixed grey at and above this becomes paper white
@@ -89,7 +90,7 @@ function parsePage(src) {
     if (!m) { buf.push(line); continue; }
     flush();
     const [, type, arg, rest] = m;
-    if (!['logo', 'tagline', 'photo', 'script', 'space'].includes(type)) throw new Error(`booklet.md: unknown {{${type}}}`);
+    if (!['logo', 'tagline', 'photo', 'fullpage', 'script', 'space'].includes(type)) throw new Error(`booklet.md: unknown {{${type}}}`);
     blocks.push({ type, arg, caption: rest ? typo(rest) : '' });
   }
   flush();
@@ -171,6 +172,18 @@ async function buildPages() {
   for (const [i, blocks] of pages.entries()) {
     const n = i + 1;
     const page = doc.addPage([mm(PAGE.w), mm(PAGE.h)]);
+    const full = blocks.find((b) => b.type === 'fullpage');
+    if (full) {
+      // a picture made for the page, embedded untouched: it runs into the spine and the head (cut), and keeps clear of
+      // the outer edge and the foot, which are the edges of the sheet the printer cannot reach
+      const abs = PHOTO_DIRS.map((d) => path.join(d, full.arg)).find((f) => fs.existsSync(f));
+      if (!abs) throw new Error(`booklet.md: picture ${full.arg} not found in ${PHOTO_DIRS.join(' or ')}`);
+      const img = await doc.embedJpg(fs.readFileSync(abs));
+      const k = Math.min((PAGE.w - PRINTER_EDGE) / img.width, (PAGE.h - PRINTER_EDGE) / img.height);
+      const w = img.width * k, h = img.height * k;
+      page.drawImage(img, { x: mm(n % 2 ? 0 : PAGE.w - w), y: mm(PAGE.h - h), width: mm(w), height: mm(h) });
+      continue;
+    }
     const left = n % 2 ? M.spine : M.outer;            // odd pages are right-hand pages: spine on the left
     const centred = blocks.some((b) => b.type === 'logo');
     const X = (x) => mm(left + x);
