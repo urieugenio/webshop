@@ -225,7 +225,7 @@ async function buildPages() {
     let prev = null;
     for (const b of blocks) {
       const gap = !prev || prev === 'space' ? 0
-        : { h1: 6, h2: prev === 'h1' ? 1.5 : 4.2, p: prev === 'h2' ? 1.2 : prev === 'h1' ? 2.5 : 2.2, li: prev === 'li' ? 0.8 : 1.5,
+        : { h1: 6, h2: prev === 'h1' ? 3.2 : 4.2, p: prev === 'h2' ? 1.2 : prev === 'h1' ? 2.5 : 2.2, li: prev === 'li' ? 0.8 : 1.5,
             logo: 3, tagline: 2.2, script: 2.5, photo: 3 }[b.type] ?? 0;
       prev = b.type;
       if (b.type === 'space') { items.push({ space: true, h: 0, gap: 0 }); continue; }
