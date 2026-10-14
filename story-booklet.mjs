@@ -47,6 +47,7 @@ const BODY = { size: 8.6, lead: 4.25 };   // pt, mm
 const H1 = 25, H2 = 6.4, TAGLINE = 6.2, SCRIPT = 20, CAPTION = 7.4, FOLIO = 6.6;
 const PHOTO_DPI = 300;
 const PRINTER_EDGE = 5;    // a laser printer leaves about 4 mm at the edges of the sheet unprinted
+const FULLPAGE_CAPTION_ROOM = 13;  // a {{fullpage}} picture with a caption ends this far above the foot
 // grey mix for the picture: mostly blue, so the purple backdrop turns light and the green clothes dark
 const PHOTO_MIX = [0.25, 0, 0.75];
 const PHOTO_WHITE = 152;   // mixed grey at and above this becomes paper white
@@ -180,8 +181,18 @@ async function buildPages() {
       if (!abs) throw new Error(`booklet.md: picture ${full.arg} not found in ${PHOTO_DIRS.join(' or ')}`);
       const img = await doc.embedJpg(fs.readFileSync(abs));
       const k = Math.min((PAGE.w - PRINTER_EDGE) / img.width, (PAGE.h - PRINTER_EDGE) / img.height);
-      const w = img.width * k, h = img.height * k;
-      page.drawImage(img, { x: mm(n % 2 ? 0 : PAGE.w - w), y: mm(PAGE.h - h), width: mm(w), height: mm(h) });
+      const w = img.width * k, h = img.height * k, x = n % 2 ? 0 : PAGE.w - w;
+      // with a caption the picture moves up to make room for it at the foot; its top runs off the page (keep it white)
+      const bottom = full.caption ? FULLPAGE_CAPTION_ROOM : PAGE.h - h;
+      page.drawImage(img, { x: mm(x), y: mm(bottom), width: mm(w), height: mm(h) });
+      wrap([{ text: full.caption, style: 'italic' }], w - 10, CAPTION).forEach((l, j) => {
+        let cx = x + (w - l.w) / 2;
+        const base = bottom - 5 - j * ptMm(CAPTION) * 1.4;
+        l.words.forEach((wd, i) => {
+          if (i) cx += spaceW('italic', CAPTION);
+          for (const p of wd.parts) { page.drawText(p.text, { x: mm(cx), y: mm(base), font: fonts.italic, size: CAPTION, color: BLACK }); cx += partW(p, CAPTION); }
+        });
+      });
       continue;
     }
     const left = n % 2 ? M.spine : M.outer;            // odd pages are right-hand pages: spine on the left
