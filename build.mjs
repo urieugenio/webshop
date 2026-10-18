@@ -23,6 +23,7 @@ import { marked } from 'marked';
 import { collectionKeys, collectionFiles, readAttributes, readCollection, mergeCollection, slugify } from './lib/collection.mjs';
 import { renderIndex, renderPage } from './lib/html.mjs';
 import { shippingCountries, ratesFor, piecesPerParcel } from './lib/shipping.mjs';
+import fontkit from '@pdf-lib/fontkit';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -333,6 +334,69 @@ async function buildLogo() {
   const name = `assets/logo-${sha(svg, 8)}.svg`;
   await writeIfChanged(name, svg);
   return { src: name, aspect: vb[2] / vb[3] };
+}
+
+// ---------------------------------------------------------------- preview image for links (Open Graph)
+// What Facebook, WhatsApp, LinkedIn, … show for a link to the site: the splash as the page shows it in a window of
+// 1200 x 630 (their recommended size, 1.91 : 1): the first slide, the logo centred, the tagline at the top.
+const OG = { w: 1200, h: 630 };
+
+async function buildOgImage(splash, logo) {
+  const slide = splash[0];
+  if (!slide) return null;
+  const a = OG.w / OG.h;
+  // like app.js: the narrowest aspect at least as wide as the window, so only the sides are cut off
+  const v = slide.V.find((x) => x.a >= a * 0.995) || slide.V[slide.V.length - 1];
+  const bg = v.sizes.find((x) => x.h >= OG.h) || v.sizes[v.sizes.length - 1];
+  const G = cfg.logo;
+  // the same sizes as the page (lib/html.mjs): logo width min(62vw, 62 * 16/9 vh), tagline a share of it
+  const logoW = Math.round(Math.min(OG.w * G.landscapeWidthAt16x9, (OG.h * G.landscapeWidthAt16x9 * 16) / 9));
+  const s = cfg.site;
+  const file = `img/og-${sha([bg.src, logo?.src, s.tagline, s.taglineBy, logoW, 'og1'].join('|'), 8)}.jpg`;
+  await generateOnce(file, async () => {
+    const layers = [];
+    if (logo) {
+      const svg = (await fsp.readFile(path.join(OUT, logo.src), 'utf8')).replace(/<svg\b/, `<svg width="${logoW}" height="${Math.round(logoW / logo.aspect)}"`);
+      const png = await sharp(Buffer.from(svg), { density: 144 }).resize(logoW).png().toBuffer();
+      const { height } = await sharp(png).metadata();
+      layers.push({ input: png, left: Math.round((OG.w - logoW) / 2), top: Math.round((OG.h - height) / 2) });
+    }
+    layers.push({ input: Buffer.from(taglineSvg(logoW)), left: 0, top: 0 });
+    const scale = OG.h / bg.h;
+    return sharp(path.join(OUT, bg.src)).resize(Math.round(bg.w * scale), OG.h)
+      .extract({ left: Math.round((bg.w * scale - OG.w) / 2), top: 0, width: OG.w, height: OG.h })
+      .composite(layers).jpeg({ quality: 86, mozjpeg: true }).toBuffer();
+  });
+  return { src: file, ...OG };
+}
+
+// the tagline as outlines (Lato from assets/fonts, "by" light italic), with the soft shadow of site.css
+function taglineSvg(logoW) {
+  const font = (f) => fontkit.create(fs.readFileSync(path.join(ROOT, 'assets', 'fonts', f)));
+  const size = logoW * (cfg.logo.taglineWidthOfLogo / 13.51); // TAGLINE_EM in lib/html.mjs
+  const runs = [[font('lato-400.woff'), `${cfg.site.tagline} `], [font('lato-300i.woff'), cfg.site.taglineBy]];
+  const spacing = 0.005 * size; // letter-spacing: .005em
+  const laid = runs.map(([f, str]) => ({ f, run: f.layout(str), k: size / f.unitsPerEm }));
+  const width = laid.reduce((t, { run, k }) => t + run.positions.reduce((w, p) => w + p.xAdvance * k + spacing, 0), 0);
+  // line-height 1, the line box centred on taglineTop (transform: translateY(-50%)): the baseline in that box
+  const f0 = laid[0].f, em = f0.unitsPerEm;
+  const baseline = OG.h * cfg.logo.taglineTop - size / 2 + ((1 - (f0.ascent - f0.descent) / em) / 2 + f0.ascent / em) * size;
+  let x = (OG.w - width) / 2;
+  const paths = [];
+  for (const { run, k } of laid) {
+    run.glyphs.forEach((g, i) => {
+      const p = run.positions[i];
+      const d = g.path.toSVG();
+      if (d) paths.push(`<path transform="translate(${(x + p.xOffset * k).toFixed(2)} ${(baseline - p.yOffset * k).toFixed(2)}) scale(${k.toFixed(5)} ${(-k).toFixed(5)})" d="${d}"/>`);
+      x += p.xAdvance * k + spacing;
+    });
+  }
+  const glyphs = paths.join('');
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${OG.w}" height="${OG.h}">
+    <filter id="s" x="-10%" y="-50%" width="120%" height="200%"><feGaussianBlur stdDeviation="3"/></filter>
+    <g fill="rgba(0,0,0,0.25)" filter="url(#s)" transform="translate(0 1)">${glyphs}</g>
+    <g fill="#fff">${glyphs}</g>
+  </svg>`;
 }
 
 // ---------------------------------------------------------------- collection / gallery
@@ -646,6 +710,8 @@ async function main() {
   const logo = await buildLogo();
   log('Splash');
   const splash = await buildSplash();
+  const og = await buildOgImage(splash, logo);
+  if (og) log(`  preview image for links: ${og.src} (${og.w}x${og.h})`);
   log('Sections');
   // every collection (beanies, scarves, …) the same way: its photos, its data file and its attributes
   const usedSlugs = new Set();
@@ -697,7 +763,7 @@ async function main() {
   const dataName = `data/site-${sha(dataJs, 8)}.js`;
   await writeIfChanged(dataName, dataJs);
 
-  const html = renderIndex({ cfg, logo, css, js, dataName, fonts, sections, splash, legal });
+  const html = renderIndex({ cfg, logo, css, js, dataName, fonts, sections, splash, legal, og });
   await writeIfChanged('index.html', html);
   await writeIfChanged('_headers', [
     '/assets/*', '  Cache-Control: public, max-age=31536000, immutable',
