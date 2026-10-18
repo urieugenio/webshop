@@ -325,7 +325,7 @@
     has(id) { return this.ids.includes(id); },
     add(id) { if (!this.has(id)) { this.ids.push(id); this.save(); } },
     remove(id) { this.ids = this.ids.filter((x) => x !== id); this.save(); },
-    save() { this.message = ''; store.set('ue-cart', this.ids); this.render(); },
+    save() { this.message = ''; store.set('ue-cart', this.ids); this.render(); Detail.refreshInfo(); },
     /** the piece with this id and its collection ({ key, i, it }), or null; ids are unique across the collections */
     find(id) {
       for (const key of SHOPS) {
@@ -341,7 +341,7 @@
       this.btn.addEventListener('click', () => this.open());
       $('.pane-close', this.pane).addEventListener('click', () => this.close());
       $('.cart-scrim').addEventListener('click', () => this.close());
-      addEventListener('keydown', (e) => { if (e.key === 'Escape' && !Detail.isOpen) this.close(); });
+      addEventListener('keydown', (e) => { if (e.key === 'Escape' && this.isOpen) this.close(); });
       this.ids = this.ids.filter((id) => this.item(id));
       if (!Ship.offers(this.country)) this.country = Ship.guess();
       this.returnFromCheckout();
@@ -396,6 +396,7 @@
       this.busy = false;
       this.render();
     },
+    get isOpen() { return !!this.pane && this.pane.classList.contains('open'); },
     open() { Menu.close(); this.pane.classList.add('open'); this.pane.setAttribute('aria-hidden', 'false'); html.classList.add('locked', 'cart-open'); },
     close() { html.classList.remove('cart-open'); this.pane.classList.remove('open'); this.pane.setAttribute('aria-hidden', 'true'); if (!Detail.isOpen) html.classList.remove('locked'); },
     render() {
@@ -465,20 +466,29 @@
       this.next.addEventListener('click', () => this.step(1));
       this.img.addEventListener('load', () => this.img.classList.add('ready'));
       addEventListener('keydown', (e) => {
-        if (!this.isOpen) return;
+        if (!this.isOpen || Cart.isOpen) return; // the cart is on top: its keys first
         if (e.key === 'Escape') this.close(true);
         else if (e.key === 'ArrowLeft') this.step(-1);
         else if (e.key === 'ArrowRight') this.step(1);
       });
-      // swipe left / right on touch screens
-      let x0 = null, y0 = 0;
-      this.media.addEventListener('touchstart', (e) => { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, { passive: true });
-      this.media.addEventListener('touchend', (e) => {
-        if (x0 === null) return;
-        const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0;
-        if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) this.step(dx < 0 ? 1 : -1);
-        x0 = null;
+      // swipe left / right on touch screens. Not a swipe: a pinch (two fingers, until all are lifted again, else
+      // lifting one finger of a pinch looks like a swipe), nor dragging one finger while zoomed in (that pans the photo)
+      let x0 = null, y0 = 0, pinch = false;
+      const zoomed = () => (window.visualViewport?.scale || 1) > 1.01;
+      this.media.addEventListener('touchstart', (e) => {
+        if (e.touches.length > 1) { pinch = true; x0 = null; }
+        else if (!pinch) { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }
       }, { passive: true });
+      const touchEnd = (e) => {
+        if (e.type === 'touchend' && !pinch && x0 !== null && !zoomed()) {
+          const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0;
+          if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) this.step(dx < 0 ? 1 : -1);
+        }
+        x0 = null;
+        if (!e.touches.length) pinch = false;
+      };
+      this.media.addEventListener('touchend', touchEnd, { passive: true });
+      this.media.addEventListener('touchcancel', touchEnd, { passive: true });
       addEventListener('resize', debounce(() => this.isOpen && this.size(), 100));
     },
     get items() { return S[this.key] || []; },
@@ -579,14 +589,16 @@
         <p class="ref">${esc(label(it))}</p>
         <p class="price">${it.price != null ? money(it.price) : ''}${sold ? '<span class="sold-tag">sold</span>' : ''}</p>
         ${rows.length ? `<dl>${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>` : ''}
-        ${it.price != null ? `<button class="btn-cart${sold ? ' is-sold' : inCart ? ' in-cart' : ''}" type="button" ${sold || inCart ? 'disabled' : ''}>
-          ${sold ? 'sold' : inCart ? 'in your cart ✓' : 'add to cart'}</button>` : ''}
+        ${it.price != null ? `<button class="btn-cart${sold ? ' is-sold' : inCart ? ' in-cart' : ''}" type="button" ${sold ? 'disabled' : ''}>
+          ${sold ? 'sold' : inCart ? 'in your cart ✓ · checkout' : 'add to cart'}</button>` : ''}
         <p class="status"></p>`;
       const btn = $('.btn-cart', this.info);
+      // in the cart: the same button opens the cart over this page (closing it comes back here)
+      if (btn && !sold && inCart) btn.addEventListener('click', () => Cart.open());
       if (btn && !sold && !inCart) btn.addEventListener('click', async () => {
         btn.classList.add('busy'); btn.disabled = true;
         const ok = await Shop.check(it.id);
-        if (ok) { Cart.add(it.id); this.refreshInfo(); $('.status', this.info).textContent = 'added — you can keep browsing'; }
+        if (ok) { Cart.add(it.id); this.refreshInfo(); $('.status', this.info).textContent = 'added — keep browsing, or tap the button to check out'; }
         else { this.refreshInfo(); $('.status', this.info).textContent = 'sorry, this piece has just been sold'; }
       });
     },
