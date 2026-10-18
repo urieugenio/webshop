@@ -592,14 +592,16 @@
         <p class="price">${it.price != null ? money(it.price) : ''}${sold ? '<span class="sold-tag">sold</span>' : ''}</p>
         ${rows.length ? `<dl>${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>` : ''}
         ${it.price != null ? `<div class="buy">
-          <button class="btn-cart${sold ? ' is-sold' : inCart ? ' in-cart' : ''}" type="button" ${sold || inCart ? 'disabled' : ''}>
+          <button class="btn-cart${sold ? ' is-sold' : inCart ? ' in-cart' : ''}" type="button" ${sold ? 'disabled' : ''}>
             ${sold ? 'sold' : inCart ? 'in your cart ✓' : 'add to cart'}</button>
           ${Cart.ids.length ? `<button class="btn-basket" type="button" aria-label="open the cart">${BASKET}<span class="cart-count">${Cart.ids.length}</span></button>` : ''}
         </div>` : ''}
         <p class="status"></p>`;
       const btn = $('.btn-cart', this.info);
-      // the basket next to it (once the cart has something): the cart slides in over this page, closing it comes back here
+      // "in your cart ✓" and the basket next to it (once the cart has something): the cart slides in over this page,
+      // closing it comes back here
       $('.btn-basket', this.info)?.addEventListener('click', () => Cart.open());
+      if (btn && !sold && inCart) btn.addEventListener('click', () => Cart.open());
       if (btn && !sold && !inCart) btn.addEventListener('click', async () => {
         btn.classList.add('busy'); btn.disabled = true;
         const ok = await Shop.check(it.id);
