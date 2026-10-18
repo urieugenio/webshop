@@ -304,7 +304,7 @@ The photos (from `scarves-print`, Adobe RGB) are square, the photo area is twice
   label stays in view. Closer to the yarn, but the top of the roll is cut off.
 
 It writes `scarf-sticker-<photo>-A4-proof.pdf` (one per A4 sheet, crop marks) and `scarf-sticker-<photo>-SRA3-2up.pdf`
-(two per SRA3 sheet) to `build\print`. The "how to wear" text (`WEAR` at the top of the script) is a draft.
+(two per SRA3 sheet) to `build\print`. The "ways to wear" text is `WEAR` at the top of the script.
 
 ## 4c. Booklet in the box (`story-booklet.mjs`)
 

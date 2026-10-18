@@ -34,8 +34,8 @@ const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'config.json'), 'utf8'));
 const SRC = path.resolve(ROOT, argVal('--sources') || cfg.sourcesDir);
 const OUT = path.resolve(ROOT, cfg.outDir, '..', 'print');
 
-// draft: the beanie card says how to wear the beanie (label on the left); replace with how a scarf should be worn
-const WEAR = 'Wrap it around your neck once or twice and let the ends hang loose.';
+// styling ideas rather than instructions: the ways the scarf is worn in the gallery
+const WEAR = 'Wear it loose, tucked into the loop, knotted at the neck, or improvise.';
 
 // ---------------------------------------------------------------- page geometry (mm, from the top-left of the trim)
 const TRIM = { w: 177, h: 177 };
@@ -168,9 +168,9 @@ async function buildStickers() {
       .forEach(([k, v], n) => { label(k, col(n), y0 + 22); text(v || '', col(n), y0 + 26.5, light, 8.5); });
     page.drawLine({ start: { x: X(MARGIN), y: Y(y0 + 32) }, end: { x: X(TRIM.w - MARGIN), y: Y(y0 + 32) }, thickness: 0.4, color: LINE });
 
-    // care (two columns) / how to wear / contact
+    // care (two columns) / ways to wear / contact
     const body = y0 + 43.5, step = 3.9;
-    [['Care', wrap(CARE, light, 8, 2 * COL - 6), 0], ['How to wear', wrap(WEAR, light, 8, COL - 4), 2], ['Stay in touch', [], 3]]
+    [['Care', wrap(CARE, light, 8, 2 * COL - 6), 0], ['Ways to wear', wrap(WEAR, light, 8, COL - 4), 2], ['Stay in touch', [], 3]]
       .forEach(([k, lines, n]) => { label(k, col(n), y0 + 39); lines.forEach((l, j) => text(l, col(n), body + j * step, light, 8)); });
     contact(col(3), body, step);
 
