@@ -76,7 +76,8 @@ called `collection.json`).
 ### No secrets in git
 
 Both repositories are **public**. Stripe and Cloudflare keys belong in `code\.env` (ignored by git) or in the
-Stripe/Cloudflare dashboards, never in a committed file. A check in both repositories refuses any commit that adds
+Stripe/Cloudflare dashboards, never in a committed file. The secrets of the Worker online (the admin key) are in
+`code\.env.worker`, also ignored by git. A check in both repositories refuses any commit that adds
 a `.env`/key file or something that looks like a Stripe secret key (`sk_…`, `rk_…`, `whsec_…`), a Cloudflare token
 or a private key. Git does not copy such checks along with a repository, so after cloning either repository run once:
 
@@ -414,8 +415,9 @@ what was bought, the shipping line. Stripe emails you on every payment (Settings
 | `legal\*.md` | shipping, returns, terms and privacy pages. `{{business}}`, `{{address}}`, `{{kvk}}`, `{{email}}`, `{{vat}}`, `{{shipWithin}}`, `{{shippingTable}}` … are filled in from `config.json` (`site.business`, `site.contact`, `shop`) and `shipping.json`. To write your own version, copy the file to `sources\content\legal\` and edit it there: that copy wins. They are a careful starting point, not legal advice: read them once |
 
 **Secrets** (never in git): `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` and `ADMIN_KEY` (see *Selling at the
-market*) are stored on the Worker (`npx wrangler secret put STRIPE_SECRET_KEY`); `wrangler.jsonc` lists them, so a
-publish fails if one is missing, and `npm run dev` only reads the ones it lists from `.dev.vars`.
+market*) are stored on the Worker (`npx wrangler secret put STRIPE_SECRET_KEY`, or every line of `code\.env.worker`
+at once with `npx wrangler secret bulk .env.worker`); `wrangler.jsonc` lists them, so a publish fails if one is
+missing, and `npm run dev` only reads the ones it lists from `.dev.vars`.
 For testing on this computer they are in `code\.dev.vars` (ignored by git).
 
 **Testing on this computer:** `npm run dev`, then open http://127.0.0.1:8788. It uses a local copy of the database
@@ -433,8 +435,9 @@ Stripe Tax has its own fee per transaction.
 A phone signed in as admin gets a dashed **mark as sold** button under every piece on the site; on a sold piece it
 says **undo sale**. Nobody else sees it, and the Worker refuses the request without the admin cookie.
 
-1. Once: choose a long admin key (a password manager can make one) and store it on the Worker with
-   `npx wrangler secret put ADMIN_KEY`. Then run `publish.bat`.
+1. Once: choose a long admin key (a password manager can make one) and put it in **`code\.env.worker`** (ignored by
+   git) instead of `replace-me-…`. Upload it with `npx wrangler secret bulk .env.worker`, then run `publish.bat`.
+   The Worker refuses the `replace-me-…` placeholder as a key.
 2. Once per phone: open `https://uri.fashion/api/admin/login`, type the key (let the phone remember it) and press
    *Sign in*. The phone stays signed in for a year; sign in again when the button is gone.
 3. At the market: open the piece, tap **mark as sold**, confirm. Every open page shows it sold within a minute.
@@ -444,7 +447,8 @@ says **undo sale**. Nobody else sees it, and the Worker refuses the request with
   when they come back). If their payment is already underway (a bank debit), the button says so and does nothing.
 - A market sale is an order with status `market` (`undone` after an undo) in the D1 table `orders`, with the price
   of the piece as its total.
-- Lost phone, or a key someone else may know: store a new `ADMIN_KEY`. That signs every phone out.
+- Lost phone, or a key someone else may know: put a new key in `.env.worker` and upload it again. That signs every
+  phone out.
 
 ### Stripe dashboard settings
 

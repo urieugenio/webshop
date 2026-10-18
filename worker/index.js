@@ -258,6 +258,8 @@ const same = (a, b) => typeof a === 'string' && typeof b === 'string' && a.lengt
 // show the admin buttons; it grants nothing. Set by the server, so Safari keeps them (it wipes script-made storage
 // after 7 days without a visit).
 const ADMIN_DAYS = 365;
+// no key, or still the placeholder of .env.worker: no admin at all
+const adminReady = (env) => !!env.ADMIN_KEY && !env.ADMIN_KEY.startsWith('replace-me');
 const adminToken = (env) => hmac(env.ADMIN_KEY, 'uri.fashion admin cookie');
 const cookie = (req, name) => (req.headers.get('Cookie') || '').split(/;\s*/).find((c) => c.startsWith(name + '='))?.slice(name.length + 1);
 
@@ -283,7 +285,7 @@ button{background:#222;color:#fff;border:0}.msg{color:#b00020;min-height:1.4em;m
 }
 
 async function login(req, env) {
-  if (!env.ADMIN_KEY) return loginPage('There is no admin key on the server yet (wrangler secret put ADMIN_KEY).', 503);
+  if (!adminReady(env)) return loginPage('There is no admin key on the server yet (README 7, "Selling at the market").', 503);
   const key = String((await req.formData().catch(() => null))?.get('key') || '');
   if (!same(key, env.ADMIN_KEY)) {
     await new Promise((r) => setTimeout(r, 1000)); // slows down guessing
@@ -302,7 +304,7 @@ function logout() {
 
 /** checks the admin cookie and that the request comes from the site itself, then runs `action(env, id, url)` */
 async function admin(req, env, url, action) {
-  if (!env.ADMIN_KEY || !same(cookie(req, 'admin'), await adminToken(env))) return json({ error: 'signed out' }, 401);
+  if (!adminReady(env) || !same(cookie(req, 'admin'), await adminToken(env))) return json({ error: 'signed out' }, 401);
   if (req.headers.get('Origin') !== url.origin) return json({ error: 'wrong origin' }, 403);
   const id = String((await req.json().catch(() => ({}))).id || '');
   if (!(await catalog(env, url)).items[id]) return json({ error: 'no such piece' }, 404);
