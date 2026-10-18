@@ -6,7 +6,8 @@ body{margin:0;font:400 18px/1.3 "Segoe UI",Frutiger,"Frutiger Linotype","Dejavu 
 @media (max-width:800px){body{font-size:15px}}
 html.locked,html.locked body{overflow:hidden}
 img{display:block;max-width:100%}
-a{color:inherit}
+/* a link starts a drag after a few px of movement, and a drag swallows the click: no dragging links (Firefox: app.js) */
+a{color:inherit;-webkit-user-drag:none;touch-action:manipulation}
 button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
 svg{fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
 :focus-visible{outline:1px solid var(--accent);outline-offset:3px}
@@ -53,9 +54,9 @@ html.cart-open .cart-scrim{opacity:1;pointer-events:auto}
   transform:translateX(-100%);transition:transform var(--menu-dur) var(--ease);padding:88px 0 0}
 html.menu-open .menu{transform:none}
 .menu ul{list-style:none;margin:0;padding:0}
-/* a click that moves a little must still be a click: no dragging the link, no selecting its text */
+/* a click that moves a little must still be a click: besides not dragging (see a{}), no selecting the text */
 .menu a{display:block;padding:12px 34px;font-size:22px;font-weight:300;letter-spacing:.06em;text-decoration:none;color:var(--text);transition:color .2s;
-  -webkit-user-drag:none;user-select:none;-webkit-user-select:none;touch-action:manipulation}
+  user-select:none;-webkit-user-select:none}
 .menu a:hover{color:var(--accent)}
 .menu-scrim{position:fixed;inset:0;z-index:55;background:rgba(0,0,0,.45);opacity:0;pointer-events:none;transition:opacity var(--menu-dur)}
 html.menu-open .menu-scrim{opacity:1;pointer-events:auto}

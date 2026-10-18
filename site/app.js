@@ -612,6 +612,8 @@
   }
 
   // ============================================================ boot
+  // no link starts a drag, so a click that moves a few px is still a click (site.css does this for all but Firefox)
+  for (const a of $$('a[href]')) a.draggable = false;
   const onScroll = () => html.classList.toggle('scrolled', scrollY > innerHeight * 0.85);
   addEventListener('scroll', onScroll, { passive: true }); onScroll();
   Splash.init();
