@@ -14,6 +14,7 @@
     "serve:lan": "node build.mjs --serve --lan",
     "backoffice": "node backoffice.mjs",
     "booklet": "node booklet.mjs",
+    "scarf-sticker": "node scarf-sticker.mjs",
     "story-booklet": "node story-booklet.mjs"
   },
   "dependencies": {

@@ -19,7 +19,7 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 import { marked } from 'marked';
-import { readAttributes, readCollection, mergeCollection, slugify } from './lib/collection.mjs';
+import { collectionKeys, collectionFiles, readAttributes, readCollection, mergeCollection, slugify } from './lib/collection.mjs';
 import { renderIndex } from './lib/html.mjs';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -350,19 +350,20 @@ async function buildSection(section, files, opts, catalog = null) {
   return { items, sheets };
 }
 
-// sources/collection.json (written by the backoffice) sets the order, the name and the attributes of
-// every collection photo. Photos it does not know yet are added at the end with the default attributes.
-function loadCollection(files) {
-  const attrs = readAttributes(SRC);
-  if (!attrs.length) log('  ! attributes.txt not found or empty — products have no price');
-  const { items, added, orphans } = mergeCollection(readCollection(SRC), files.map((f) => f.name), attrs);
-  if (added.length) log(`  ! ${added.length} new photo(s) have no name yet; open the backoffice to give them one`);
-  if (orphans.length) log(`  ${orphans.length} entr${orphans.length > 1 ? 'ies' : 'y'} in collection.json without a photo (ignored)`);
-  const noColor = items.filter((e) => !e.color).length;
-  if (noColor) log(`  ! ${noColor} piece(s) have no colour yet; open the backoffice to measure them`);
+// sources/<key>.json (written by the backoffice) sets the order, the name and the attributes of every photo of
+// the collection. Photos it does not know yet are added at the end with the default attributes.
+// usedSlugs is shared by all collections: a name is the link to its piece, so it must be unique on the whole site.
+function loadCollection(key, files, usedSlugs) {
+  const F = collectionFiles(key);
+  const attrs = readAttributes(SRC, key);
+  if (!attrs.length) log(`  ! ${F.attributes} not found or empty — ${key} have no price`);
+  const { items, added, orphans } = mergeCollection(readCollection(SRC, key), files.map((f) => f.name), attrs);
+  if (added.length) log(`  ! ${added.length} new photo(s) in ${F.photos} have no name yet; open the backoffice to give them one`);
+  if (orphans.length) log(`  ${orphans.length} entr${orphans.length > 1 ? 'ies' : 'y'} in ${F.data} without a photo (ignored)`);
+  const noColor = items.filter((e) => !e.hex).length; // not measured (a multicoloured piece may have no main colour)
+  if (noColor) log(`  ! ${noColor} piece(s) in ${F.photos} have no colour yet; open the backoffice to measure them`);
   const byName = new Map(files.map((f) => [f.name, f]));
   const sorted = items.map((e) => byName.get(e.file));
-  const usedSlugs = new Set();
   const catalog = new Map();
   for (const e of items) {
     const { file, name, hex, colorByHand, ...values } = e; // hex and colorByHand are for the backoffice only
@@ -372,15 +373,11 @@ function loadCollection(files) {
     usedSlugs.add(slug);
     catalog.set(file, { name: name || id, slug, ...values });
   }
-  // the whole palette, in palette order, for the colour filter (colours without pieces are shown dimmed)
-  const colors = {
-    palette: (cfg.colors?.palette || []).map((p) => ({ name: p.name, hex: p.hex })),
-    multiLabel: cfg.colors?.multiLabel || 'multicolour',
-  };
-  // the pulldowns of the site's filter bar (config.json "filters"), each with every value of attributes.txt
-  const filters = (cfg.filters || []).map((k) => attrs.find((a) => a.key === k)).filter(Boolean)
+  // the pulldowns of the site's filter bar (config.json collections.<key>.filters), each with every value of
+  // the attributes file
+  const filters = (cfg.collections[key].filters || []).map((k) => attrs.find((a) => a.key === k)).filter(Boolean)
     .map((a) => ({ key: a.key, label: a.label, values: a.values }));
-  return { files: sorted, catalog, colors, filters, attrs: attrs.filter((a) => a.key !== 'price').map((a) => ({ key: a.key, label: a.label })) };
+  return { files: sorted, catalog, filters, attrs: attrs.filter((a) => a.key !== 'price').map((a) => ({ key: a.key, label: a.label })) };
 }
 
 // ---------------------------------------------------------------- static assets
@@ -398,9 +395,9 @@ async function copyHashed(srcAbs, destDir, baseName) {
 //   - text before the first "# Title" is the intro banner: no heading, not in the menu
 //   - ![description](picture.jpg) places a picture from sources/content/images, converted to webp in several
 //     widths; full column width, portrait and square pictures are cropped to landscape
-//   - a line with only {{beanies}}, {{scarves}} or {{gallery}} places that grid (beanies with its filters)
+//   - a line with only {{beanies}}, {{scarves}} or {{gallery}} places that grid (a collection with its filters)
 // To reorder, add or remove sections: move, add or delete the text in site.md.
-const GRIDS = ['beanies', 'scarves', 'gallery'];
+const GRIDS = [...collectionKeys(cfg), 'gallery'];
 const GRID_TAG = /^\{\{\s*([A-Za-z]+)\s*\}\}$/;
 
 const slugOf = (name) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
@@ -497,10 +494,14 @@ async function cleanupAndManifest() {
   for (const f of all) {
     if (!produced.has(f)) { await fsp.rm(path.join(OUT, f)); stats.removed++; }
   }
-  // remove empty folders
-  for (const d of ['thumbs', 'img/collection', 'img/gallery', 'img/splash', 'img/content', 'img', 'assets', 'data', 'fonts']) {
-    const p = path.join(OUT, d);
-    try { if (fs.existsSync(p) && !(await fsp.readdir(p)).length) await fsp.rmdir(p); } catch {}
+  // remove empty folders (deepest first, so a folder emptied by removing its subfolders goes too)
+  const dirs = [];
+  const listDirs = async (d) => {
+    for (const e of await fsp.readdir(d, { withFileTypes: true })) if (e.isDirectory()) { await listDirs(path.join(d, e.name)); dirs.push(path.join(d, e.name)); }
+  };
+  await listDirs(OUT);
+  for (const p of dirs) {
+    try { if (!(await fsp.readdir(p)).length) await fsp.rmdir(p); } catch {}
   }
   // manifest of the published objects; phase 2 uses the difference to know what to upload
   const manPath = path.join(CACHE, 'dist-manifest.json');
@@ -559,9 +560,28 @@ async function main() {
   log('Splash');
   const splash = await buildSplash();
   log('Sections');
-  const coll = loadCollection(listImages(path.join(SRC, 'collection')));
-  const collection = await buildSection('collection', coll.files, cfg.thumbs.collection, coll.catalog);
+  // every collection (beanies, scarves, …) the same way: its photos, its data file and its attributes
+  const usedSlugs = new Set();
+  const collections = {}, items = {}, sheets = {};
+  const owner = new Map(); // photo id -> collection: the cart and the inventory know a piece by its id alone
+  for (const key of collectionKeys(cfg)) {
+    const files = listImages(path.join(SRC, collectionFiles(key).photos));
+    for (const f of files) {
+      if (owner.has(f.id)) throw new Error(`${f.name} is both in ${owner.get(f.id)} and in ${key}: every photo needs its own file name`);
+      owner.set(f.id, key);
+    }
+    const coll = loadCollection(key, files, usedSlugs);
+    const built = await buildSection(key, coll.files, cfg.thumbs.collection, coll.catalog);
+    collections[key] = { attrs: coll.attrs, filters: coll.filters };
+    items[key] = built.items;
+    sheets[key] = built.sheets;
+  }
   const gallery = await buildSection('gallery', listImages(path.join(SRC, 'gallery')), cfg.thumbs.gallery);
+  // the whole palette, in palette order, for the colour filter (each filter bar shows only the colours its pieces have)
+  const colors = {
+    palette: (cfg.colors?.palette || []).map((p) => ({ name: p.name, hex: p.hex })),
+    multiLabel: cfg.colors?.multiLabel || 'multicolour',
+  };
   log('Content');
   const sections = await buildContent();
   await fsp.writeFile(path.join(CACHE, 'meta.json'), JSON.stringify(meta));
@@ -578,8 +598,9 @@ async function main() {
     layout: cfg.layout, thumbs: { lazyMargin: cfg.thumbs.lazyMargin }, splash: { slideSeconds: cfg.splash.slideSeconds, fadeSeconds: cfg.splash.fadeSeconds },
     animation: cfg.animation, shop: cfg.shop, theme: cfg.theme,
   };
-  const data = { config: publicCfg, splash, attrs: coll.attrs, colors: coll.colors, filters: coll.filters, collection: collection.items, gallery: gallery.items,
-    sheets: { collection: collection.sheets, gallery: gallery.sheets } };
+  // the items of a collection are under its key (SITE.beanies, SITE.scarves), like SITE.gallery
+  const data = { config: publicCfg, splash, colors, collections, ...items, gallery: gallery.items,
+    sheets: { ...sheets, gallery: gallery.sheets } };
   const dataJs = `window.SITE=${JSON.stringify(data)};\n`;
   const dataName = `data/site-${sha(dataJs, 8)}.js`;
   await writeIfChanged(dataName, dataJs);

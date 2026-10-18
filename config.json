@@ -120,7 +120,18 @@
     }
   },
 
-  "filters": ["price", "size", "model", "thickness"],
+  "collections": {
+    "beanies": {
+      "filters": ["price", "size", "model", "thickness"]
+    },
+    "scarves": {
+      "filters": ["price", "model", "length", "width"],
+      "colorAnalysis": {
+        "region": [0.15, 0.30, 0.85, 0.55],
+        "multiRegions": [[0.12, 0.18, 0.88, 0.55], [0.15, 0.55, 0.70, 0.80]]
+      }
+    }
+  },
 
   "shop": {
     "currency": "EUR",

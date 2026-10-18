@@ -9,7 +9,8 @@ The generator only **reads** the sources folder; it refuses to write anything in
 D:\Webshop\
 ├── code\      ← this folder: the git repository (github.com/urieugenio/webshop)
 │   ├── build.mjs, config.json, package.json, run.bat
-│   ├── backoffice.mjs, backoffice.bat, backoffice\   the collection editor (see 4a)
+│   ├── backoffice.mjs, backoffice.bat, backoffice\   the editor of the beanies and the scarves (see 4a)
+│   ├── booklet.mjs, scarf-sticker.mjs, story-booklet.mjs   the printed cards and booklet for the boxes (see 4b–4c)
 │   ├── lib\       generator modules
 │   ├── site\      front-end css + js (copied into the build with a hash in the name)
 │   ├── assets\    fonts
@@ -17,7 +18,7 @@ D:\Webshop\
 │   ├── tools\     pre-commit check against secret keys (see "Git" below)
 │   └── node_modules\   (not in git; recreated by "npm install")
 ├── content\
-│   ├── sources\   everything the build reads: logo, splash, collection, gallery, content pages, attributes.txt, collection.json
+│   ├── sources\   everything the build reads: logo, splash, beanies, scarves, gallery, content pages, the collections' attributes and data
 │   │              ← its own git repository (github.com/urieugenio/webshop-content): the texts and data, not the pictures
 │   ├── design\    poster, layout samples, logo artwork, mockups
 │   └── prompts\   working notes / prompts
@@ -54,9 +55,10 @@ If the GitHub repository was created with a README or licence, run `git pull --r
 
 ### Git (content)
 
-`content\sources` is a second repository with the texts and product data: `content\*.md`, `collection.json`
-(written by the backoffice), `attributes.txt` and `logo.svg`. Its `.gitignore` leaves out the picture folders
-(`splash`, `gallery`, `collection`) and every jpg/png/psd, so only text is versioned; the pictures are backed up
+`content\sources` is a second repository with the texts and product data: `content\*.md`, `beanies.json` and
+`scarves.json` (written by the backoffice), `beanies-attributes.txt`, `scarves-attributes.txt` and `logo.svg`. Its
+`.gitignore` leaves out the picture folders (`splash`, `gallery`, `beanies`, `scarves` and their `-print` folders)
+and every jpg/png/psd, so only text is versioned; the pictures are backed up
 separately (the raw files in Lightroom are the master). After editing texts or a session in the backoffice:
 
 ```
@@ -66,7 +68,8 @@ git commit -m "what changed"
 git push
 ```
 
-`git log -p collection.json` shows every change to the product data.
+`git log -p --follow beanies.json` shows every change to the product data (`--follow` includes the time it was
+called `collection.json`).
 
 ### No secrets in git
 
@@ -127,9 +130,10 @@ Two notes:
 |---|---|
 | `logo.svg` | the centred logo on the splash page |
 | `splash/*.jpg` | splash background. `splash-master.jpg` plus its wider versions `splash-master-wide.jpg` (16:9) and `splash-master-superwide.jpg` (32:9), all the same height with the figure centred. From these the build renders every aspect in `splash.aspects`, each cut from the narrowest master that is wide enough, so only the sides are ever cropped. Any other picture (with its own optional `-wide` / `-superwide` versions) becomes an extra cross-fading slide. `.psd` files are ignored |
-| `collection/*.jpg` | collection products (square) |
-| `attributes.txt` | the choices for price, size, … (see **4a**) |
-| `collection.json` | order, name, price, size of every product. Written by the backoffice (see **4a**) |
+| `beanies/*.jpg`, `scarves/*.jpg` | the products of each collection (square). A file name may not be in both: the cart knows a piece by it |
+| `beanies-print/`, `scarves-print/` | the same photos in Adobe RGB, same file names, for the printed card and sticker (**4b**) |
+| `beanies-attributes.txt`, `scarves-attributes.txt` | the choices for price, size, … of each collection (see **4a**) |
+| `beanies.json`, `scarves.json` | order, name, price, size of every product. Written by the backoffice (see **4a**) |
 | `gallery/*.jpg` | gallery pictures, any aspect ratio. **Create this folder** — while it is missing, the gallery says "new pictures coming soon" |
 | `content/site.md` | the whole page below the splash: all sections, see **The page: site.md** below |
 | `content/images/` | the pictures used in `site.md` |
@@ -176,32 +180,39 @@ I was born on the island of St. Maarten …
   (`content.cropPosition`: "north"; other options "centre", "south", "attention" = most detailed part).
   A picture that is missing, or a picture in `images` that `site.md` does not use, is reported by the build.
 - **grids**: a line with only `{{beanies}}`, `{{scarves}}` or `{{gallery}}` places that grid there, full width.
-  The beanies grid comes with its filter bar. A grid without pieces or pictures shows "coming soon".
+  The beanies and the scarves each come with their own filter bar. A grid without pieces or pictures shows "coming soon".
 
 ## 4a. Backoffice (`backoffice.bat`)
 
 Double-click **`backoffice.bat`** (or `npm run backoffice`). It opens http://localhost:8081 in the browser; close the
 black window to stop it.
 
-- the grid shows every photo in `collection\` with its name, price and size, in the order of the site;
+- the tabs **Beanies** and **Scarves** at the top switch between the collections (`config.json` "collections"). Each
+  has its own photos (`beanies\`, `scarves\`), its own attributes (`beanies-attributes.txt`, `scarves-attributes.txt`)
+  and its own data file (`beanies.json`, `scarves.json`);
+- the grid shows every photo of the collection with its name, price and size, in the order of the site;
 - **drag** a piece to change the order;
 - **click** a piece to edit it. Closing the editor (Close, Esc, or clicking next to it) saves. ‹ › or the arrow keys go to the previous/next piece;
 - **Build site** runs the generator and shows its output; **View site** opens the result.
 
-Every change is saved straight away to `sources\collection.json`, the only file the backoffice writes in `sources`.
-The previous version is kept in `build\cache\backoffice\collection.previous.json`.
+Every change is saved straight away to `sources\beanies.json` or `sources\scarves.json`, the only files the backoffice
+writes in `sources`. The previous version is kept in `build\cache\backoffice\beanies.previous.json` (or `scarves.…`).
+
+**Another collection** (e.g. hats): add `"hats": { "filters": [...] }` to `collections` in `config.json`, a folder
+`hats` with the photos (and `hats-print`), a `hats-attributes.txt`, and `{{hats}}` in `site.md`. The backoffice gets a
+tab for it and writes `hats.json`.
 
 **Names.** The name is shown in the detail pane and is the link to the piece: "Cape Town" → `#cape-town`.
 A new photo gets a free city name from `backoffice\cities.txt`; ↻ in the editor suggests another one.
 `cities.txt` holds the 10,000 largest cities of countries that use the Latin alphabet, one-word names only. It is made from the GeoNames list
 (`content\sources\cities15000.txt`, geonames.org, CC BY 4.0) with `node backoffice\make-cities.mjs`; run that again to remake it
 (an optional second argument sets the number of names).
-Names must be unique and cannot be the name of a section (`collection`, `contact`, …).
+Names must be unique across the beanies and the scarves together, and cannot be the name of a section (`beanies`, `contact`, …).
 Renaming a piece changes its link. The file name (`DSC01606`) is still used for the images and the cart.
 
-**New and removed photos.** A photo you add to `collection\` appears at the end of the grid with the default attributes
-the next time the backoffice (re)loads. If you remove a photo, its entry stays in `collection.json` but is not shown, so it keeps its name
-if the photo comes back.
+**New and removed photos.** A photo you add to `beanies\` or `scarves\` appears at the end of its grid with the default
+attributes the next time the backoffice (re)loads. If you remove a photo, its entry stays in the json file but is not
+shown, so it keeps its name if the photo comes back.
 
 **Colours.** The backoffice measures the colour of every new photo when it starts (the first time this takes
 about half a minute for 145 photos). It stores the nearest palette colour, whether the piece is multicoloured, and
@@ -216,13 +227,17 @@ For *multicolour* the crown plus the side right of the label is split into two c
 lit and shaded yarn of one colour, a multicoloured piece into two clearly different colours. On the first 145 photos
 the dominant colour was almost always right and *multicolour* matched a human eye for about 9 out of 10 pieces;
 fine pastel speckles and gradients that only change near the brim are the usual misses.
+The scarves are photographed rolled up, so they are measured in other places: `collections.scarves.colorAnalysis` in
+`config.json` (the front of the roll, and the roll plus the end with the label for *multicolour*). On the first 15 the
+plain bright colours were right; very dark yarns (teal, plum), dusty mauve and one multicoloured scarf needed a hand.
 
-On the site the collection has a filter bar: colour dots, multicolour, and a chip per price and per size (and per value of
+On the site each collection has its own filter bar: colour dots (only the colours its pieces have), multicolour, and a chip per price and per size (and per value of
 any attribute you add). Within a row any choice matches, between rows all must match: *blue + multicolour + € 180*
 shows the multicoloured pieces that are mostly blue and cost € 180. The ‹ › arrows in the detail pane skip the pieces
-the filter hides.
+the filter hides. A pulldown only appears when the pieces have at least two values for it, so the scarves (all
+€ 190, all 167 × 7 cm) show only the colours until a second model, length or price is added.
 
-### attributes.txt
+### beanies-attributes.txt, scarves-attributes.txt
 
 ```
 [price]
@@ -239,7 +254,9 @@ the filter hides.
 - one value per line; `*` marks the default for new photos (without a `*` new photos get no value);
 - `price` is a number in euros; all other values are shown exactly as written;
 - add a section (e.g. `[colour]`) to add an attribute; removing a value from the list does not change pieces that already have it
-  (the backoffice shows it as "not in attributes.txt").
+  (the backoffice shows it as "not in beanies-attributes.txt");
+- the scarves have `price`, `model`, `material`, `thickness`, `length` and `width`, each with one value for now; add
+  a line (e.g. `long scarf` under `[model]`, `190 cm` under `[length]`) to offer a choice.
 
 ## 4b. Printed card for the box (`booklet.mjs`)
 
@@ -257,10 +274,35 @@ It writes to `D:\Webshop\build\print`:
 - `booklet-A4-proof.pdf`: one card (with its 5 mm bleed) per A4 sheet, with crop marks, for proof prints at home;
 - `booklet-SRA3-4up.pdf`: four cards per SRA3 sheet (320 × 450 mm) with crop marks, for the print shop.
 
-The photos come from `collection-print` (Lightroom export in **Adobe RGB**, same file names as `collection`). They
+The photos come from `beanies-print` (Lightroom export in **Adobe RGB**, same file names as `beanies`). They
 are embedded unconverted with their Adobe RGB profile, at 300 dpi; the dark background is widened a little so the
 trim never cuts into a beanie. Fonts: Lato (as on the site; the website
 address is Lato Regular with a thin outline, as there is no Lato Bold) and Great Vibes (`assets\fonts`, OFL licence).
+What the card and the scarf sticker share (fonts, photo embedding, the contact and thank-you blocks, crop marks) is
+in `lib\print.mjs`.
+
+### Scarf sticker (`scarf-sticker.mjs`)
+
+The scarf box is square: one **177 × 177 mm** sticker per scarf, with the same information as the beanie card. The
+photo fills the top half; below it the text is set on four columns (name; model, material, thickness, size; care over
+two columns, how to wear, stay in touch; thank you and the signature line).
+
+```
+node scarf-sticker.mjs                         every scarf, in the order of the site (photo: fill)
+node scarf-sticker.mjs --photo=zoom            the other way to fill the photo area
+node scarf-sticker.mjs --only=Timoteo,Ripley   just these scarves
+```
+
+The photos (from `scarves-print`, Adobe RGB) are square, the photo area is twice as wide as it is high:
+
+- **fill** (default): the whole scarf, with the dark backdrop extended to the left and right edges. The extension
+  continues the backdrop's own light row by row, lets a shadow at the edge of the photo fade out, adds the photo's
+  grain, and blends into the photo over its outer 2 %, so there is no seam;
+- **zoom**: the full width of the photo, cut to the height of the area, ending at 90 % of the photo's height so the
+  label stays in view. Closer to the yarn, but the top of the roll is cut off.
+
+It writes `scarf-sticker-<photo>-A4-proof.pdf` (one per A4 sheet, crop marks) and `scarf-sticker-<photo>-SRA3-2up.pdf`
+(two per SRA3 sheet) to `build\print`. The "how to wear" text (`WEAR` at the top of the script) is a draft.
 
 ## 4c. Booklet in the box (`story-booklet.mjs`)
 
@@ -306,7 +348,8 @@ All tunables are in `config.json`, and the front-end reads them from the generat
 | `layout.phoneColumns`, `layout.phoneBreakpoint`, `layout.sideMarginPhone` | 3 columns below 600 px, 4 px side margin |
 | `layout.galleryRowScale` | gallery row height relative to the collection thumb size |
 | `theme.*` | colours (VS Code dark), emboss light/dark edge colours, accent yellow |
-| `thumbs.collection.tileSizes` | resolutions per thumbnail on the sheets. The browser picks the smallest one that is sharp at its pixel density |
+| `collections` | the collections for sale, in this order (`beanies`, `scarves`): per collection `filters`, the attributes that get a pulldown in its filter bar, and optionally `colorAnalysis`, where its photos are measured (on top of `colors.analysis`) |
+| `thumbs.collection.tileSizes` | resolutions per thumbnail on the sheets of every collection. The browser picks the smallest one that is sharp at its pixel density |
 | `thumbs.*.tilesPerRow` | 4 → 4×4 = 16 thumbs per sheet (2048×2048 px at 512) |
 | `thumbs.lazyMargin` | how far (px) ahead of the viewport sheets start loading |
 | `splash.aspects` / `frame` / `frameScales` | splash backgrounds in 32:9, 24:9, 16:9, 4:3, 3:4 and 9:16, each fitted inside 7680x2160, half and a quarter of that. The browser takes the narrowest aspect that is at least as wide as the window (image fills the full height, sides cropped) and the smallest size that covers the window at its pixel density |

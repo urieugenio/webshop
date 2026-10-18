@@ -1,12 +1,14 @@
-/* Collection backoffice — grid of the collection photos, drag to reorder, click to edit. Every change is saved
-   to sources/collection.json right away (closing the detail view saves, so does dropping a dragged piece). */
+/* Collection backoffice — one tab per collection (beanies, scarves): the grid of its photos, drag to reorder, click
+   to edit. Every change is saved to sources/<collection>.json right away (closing the detail view saves, so does
+   dropping a dragged piece). The tab is in the address: /?c=scarves */
 (() => {
   'use strict';
   const $ = (s, el = document) => el.querySelector(s);
   const grid = $('.grid');
   const dlg = $('.detail');
   const statusEl = $('.status');
-  let S = { attrs: [], items: [], cities: [], taken: [], palette: [] };
+  let S = { attrs: [], items: [], cities: [], taken: [], palette: [], collections: [], files: {} };
+  const KEY = new URLSearchParams(location.search).get('c') || '';  // empty: the first collection
   let money = (n) => String(n);
   let current = -1;       // index of the piece in the detail view
   let dragging = false;
@@ -18,7 +20,8 @@
   const slugify = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '')
     .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
   const fmt = (a, v) => (v == null || v === '' ? '' : a.key === 'price' ? money(v) : String(v));
-  const thumbUrl = (it, w) => `/thumb/${encodeURIComponent(it.file)}?w=${w}`;
+  const thumbUrl = (it, w) => `/thumb/${encodeURIComponent(S.key)}/${encodeURIComponent(it.file)}?w=${w}`;
+  const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
   function status(text, err) {
     statusEl.textContent = text;
@@ -26,6 +29,7 @@
   }
 
   async function api(method, url, body) {
+    url += (url.includes('?') ? '&' : '?') + 'c=' + encodeURIComponent(S.key || KEY);
     const r = await fetch(url, { method, headers: body ? { 'Content-Type': 'application/json' } : {}, body: body && JSON.stringify(body) });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(data.error || `${r.status} ${r.statusText}`);
@@ -207,7 +211,7 @@
       const missing = v != null && v !== '' && !values.includes(v);
       sel.replaceChildren(
         ...(v == null || v === '' ? [new Option('—', '')] : []),
-        ...(missing ? [new Option(`${fmt(a, v)} (not in attributes.txt)`, String(v))] : []),
+        ...(missing ? [new Option(`${fmt(a, v)} (not in ${S.files.attributes})`, String(v))] : []),
         ...values.map((x) => new Option(fmt(a, x), String(x))));
       sel.value = v == null ? '' : String(v);
     }
@@ -350,12 +354,25 @@
   });
 
   // ------------------------------------------------------------ start
+  function renderTabs() {
+    $('.tabs').replaceChildren(...S.collections.map((k) => {
+      const a = document.createElement('a');
+      a.href = '?c=' + encodeURIComponent(k);
+      a.textContent = cap(k);
+      if (k === S.key) a.setAttribute('aria-current', 'page');
+      return a;
+    }));
+    document.title = `${cap(S.key)} — backoffice`;
+    $('.grid').setAttribute('aria-label', S.key);
+  }
+
   const start = () => api('GET', '/api/state').then((data) => {
     S = data;
+    renderTabs();
     $('.multi-label', dlg).textContent = S.multiLabel;
     const nf = new Intl.NumberFormat(data.locale, { style: 'currency', currency: data.currency, maximumFractionDigits: 2, minimumFractionDigits: 0 });
     money = (n) => nf.format(n);
-    if (!S.attrs.length) status('attributes.txt not found or empty: only names can be edited', true);
+    if (!S.attrs.length) status(`${S.files.attributes} not found or empty: only names can be edited`, true);
     buildFields();
     renderGrid();
   });

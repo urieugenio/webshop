@@ -4,6 +4,9 @@
   const S = window.SITE;
   const C = S.config;
   const L = C.layout;
+  // the collections that are for sale (beanies, scarves, …): their items are S[key], their attributes S.collections[key]
+  const SHOPS = Object.keys(S.collections || {});
+  const isShop = (key) => SHOPS.includes(key);
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
   const html = document.documentElement;
@@ -129,9 +132,9 @@
           b.dataset.i = i;
           b.style.setProperty('--c', it.c);
           b.setAttribute('aria-label', label(it));
-          b.innerHTML = '<span class="ti"></span>' + (key === 'collection' ? '<span class="sold-band">sold</span>' : '');
+          b.innerHTML = '<span class="ti"></span>' + (isShop(key) ? '<span class="sold-band">sold</span>' : '');
           b.addEventListener('click', () => Detail.open(key, i, true));
-          frag.appendChild(key === 'collection' ? this.cell(b, it, i) : b);
+          frag.appendChild(isShop(key) ? this.cell(b, it, i, key) : b);
           sec.thumbs.push(b);
         });
         el.appendChild(frag);
@@ -142,8 +145,8 @@
       this.layout();
       addEventListener('resize', debounce(() => this.layout(), 120));
     },
-    /** collection: the thumb plus a caption below it: colour dot, name and (on the right) price */
-    cell(b, it, i) {
+    /** a collection for sale: the thumb plus a caption below it: colour dot, name and (on the right) price */
+    cell(b, it, i, key) {
       const cell = document.createElement('div');
       cell.className = 'cell';
       const cap = document.createElement('div');
@@ -158,7 +161,7 @@
       if (!hex && !it.multi) dot.remove();
       $('.nm', cap).textContent = label(it);
       $('.pr', cap).textContent = money(it.price);
-      cap.addEventListener('click', () => Detail.open('collection', i, true));
+      cap.addEventListener('click', () => Detail.open(key, i, true));
       cell.append(b, cap);
       b._cell = cell;
       return cell;
@@ -269,11 +272,10 @@
       } catch { return !this.sold.has(id); }
     },
     apply() {
-      const sec = Grid.sections.collection;
-      if (sec) sec.thumbs.forEach((t, i) => {
-        const s = this.sold.has(sec.items[i].id);
-        t.classList.toggle('sold', s);
-      });
+      for (const key of SHOPS) {
+        const sec = Grid.sections[key];
+        if (sec) sec.thumbs.forEach((t, i) => t.classList.toggle('sold', this.sold.has(sec.items[i].id)));
+      }
       Detail.refreshInfo();
       Cart.render();
     },
@@ -285,7 +287,15 @@
     add(id) { if (!this.has(id)) { this.ids.push(id); this.save(); } },
     remove(id) { this.ids = this.ids.filter((x) => x !== id); this.save(); },
     save() { store.set('ue-cart', this.ids); this.render(); },
-    item(id) { return (S.collection || []).find((x) => x.id === id); },
+    /** the piece with this id and its collection ({ key, i, it }), or null; ids are unique across the collections */
+    find(id) {
+      for (const key of SHOPS) {
+        const i = (S[key] || []).findIndex((x) => x.id === id);
+        if (i >= 0) return { key, i, it: S[key][i] };
+      }
+      return null;
+    },
+    item(id) { return this.find(id)?.it; },
     init() {
       this.btn = $('.cart-btn');
       this.pane = $('.pane.cart');
@@ -307,7 +317,7 @@
       let total = 0;
       list.innerHTML = '';
       for (const id of this.ids) {
-        const it = this.item(id);
+        const { key, i, it } = this.find(id);
         const sold = Shop.sold.has(id);
         if (!sold && it.price) total += it.price;
         const row = document.createElement('div');
@@ -315,13 +325,13 @@
         row.innerHTML = `<button class="thumb loaded" type="button" aria-label="show ${esc(label(it))}"><span class="ti"></span></button>
           <div><div class="ci-ref">${esc(label(it))}</div><div class="ci-desc"></div>${sold ? '<div class="ci-sold">sold — no longer available</div>' : ''}</div>
           <div><div class="ci-price">${money(it.price)}</div><button class="ci-remove" type="button">remove</button></div>`;
-        $('.ci-desc', row).textContent = (S.attrs || []).map((a) => it[a.key]).filter(Boolean).join(' · ');
+        $('.ci-desc', row).textContent = S.collections[key].attrs.map((a) => it[a.key]).filter(Boolean).join(' · ');
         const th = $('.thumb', row);
         th.style.setProperty('--c', it.c);
-        const tier = Sheets.tierFor('collection', 70);
-        const css = Sheets.css('collection', it, tier, 70, 70);
+        const tier = Sheets.tierFor(key, 70);
+        const css = Sheets.css(key, it, tier, 70, 70);
         if (css) { Sheets.load(css.url); Object.assign($('.ti', th).style, { backgroundImage: css.backgroundImage, backgroundSize: css.backgroundSize, backgroundPosition: css.backgroundPosition }); }
-        th.addEventListener('click', () => { this.close(); Detail.open('collection', S.collection.indexOf(it), true); });
+        th.addEventListener('click', () => { this.close(); Detail.open(key, i, true); });
         $('.ci-remove', row).addEventListener('click', () => this.remove(id));
         list.appendChild(row);
       }
@@ -395,7 +405,7 @@
     /** the next piece in direction d that the filter shows (-1 or items.length when there is none) */
     neighbour(d) {
       let j = this.i + d;
-      while (j >= 0 && j < this.items.length && !Filter.shows(this.key, this.items[j])) j += d;
+      while (j >= 0 && j < this.items.length && !Filters.shows(this.key, this.items[j])) j += d;
       return j;
     },
     step(d) {
@@ -455,11 +465,11 @@
       if (animate) { this.media.classList.add('fading'); setTimeout(swap, 180); } else swap();
     },
     refreshInfo() {
-      if (!this.isOpen || this.key !== 'collection') { if (this.info) this.info.innerHTML = ''; return; }
+      if (!this.isOpen || !isShop(this.key)) { if (this.info) this.info.innerHTML = ''; return; }
       const it = this.item;
       const sold = Shop.sold.has(it.id);
       const inCart = Cart.has(it.id);
-      const rows = (S.attrs || []).filter((a) => it[a.key] != null && it[a.key] !== '').map((a) => [a.label, it[a.key]]);
+      const rows = S.collections[this.key].attrs.filter((a) => it[a.key] != null && it[a.key] !== '').map((a) => [a.label, it[a.key]]);
       this.info.innerHTML = `
         <p class="ref">${esc(label(it))}</p>
         <p class="price">${it.price != null ? money(it.price) : ''}${sold ? '<span class="sold-tag">sold</span>' : ''}</p>
@@ -487,32 +497,37 @@
   }
 
   // ============================================================ collection filters
+  // Every collection has its own filter bar above its grid.
   // One colour at a time: the colour dots work like radio buttons ("multicolour" shows the multicoloured pieces);
-  // clicking the chosen dot again shows all colours. Below them, the attributes in config.json "filters" get a
-  // pulldown with the values pieces have (in the order of attributes.txt); one value only means no pulldown.
+  // clicking the chosen dot again shows all colours. Below them, the attributes in config.json collections.<key>.filters
+  // get a pulldown with the values pieces have (in the order of the attributes file); one value only means no pulldown.
   // A piece is shown when it matches the colour and every pulldown.
   const MULTI = '*multi';
-  const Filter = {
+  const Filters = {
+    bars: {},     // collection key -> its filter
+    init() { for (const key of SHOPS) { const f = makeFilter(key); if (f.init()) this.bars[key] = f; } },
+    shows(key, it) { const f = this.bars[key]; return !f || f.match(it); },
+  };
+  const makeFilter = (key) => ({
     color: null,  // palette name, MULTI or null (all colours)
     pick: {},     // attribute key -> chosen value
+    /** builds the bar; false when this collection has nothing to filter */
     init() {
-      this.bar = $('.filters[data-section="collection"]');
-      const items = S.collection || [];
-      if (!this.bar || items.length < 2) return;
+      this.bar = $(`.filters[data-section="${key}"]`);
+      const items = S[key] || [];
+      if (!this.bar || items.length < 2) return false;
       const present = (key) => new Set(items.map((it) => it[key]).filter((v) => v != null && v !== ''));
       let html = '';
-      // colour dots, in palette order
+      // colour dots, in palette order: only the colours pieces of this collection have (and multicolour when one is)
       const colours = present('color');
-      // every palette colour is shown, also when no piece has it at the moment (then dimmed and not clickable)
-      const dot = (value, cls, title, hex, none) => `<button type="button" role="radio" class="${cls}" data-color="${esc(value)}" ` +
-        `title="${esc(title)}${none ? ' (none at the moment)' : ''}" aria-label="${esc(title)}" aria-checked="false"` +
-        `${hex ? ` style="--sw:${hex}"` : ''}${none ? ' disabled' : ''}></button>`;
-      const dots = (S.colors?.palette || []).map((p) => dot(p.name, 'sw', p.name, p.hex, !colours.has(p.name)));
-      dots.push(dot(MULTI, 'sw multi', S.colors.multiLabel, null, !items.some((it) => it.multi)));
+      const dot = (value, cls, title, hex) => `<button type="button" role="radio" class="${cls}" data-color="${esc(value)}" ` +
+        `title="${esc(title)}" aria-label="${esc(title)}" aria-checked="false"${hex ? ` style="--sw:${hex}"` : ''}></button>`;
+      const dots = (S.colors?.palette || []).filter((p) => colours.has(p.name)).map((p) => dot(p.name, 'sw', p.name, p.hex));
+      if (items.some((it) => it.multi)) dots.push(dot(MULTI, 'sw multi', S.colors.multiLabel, null));
       if (dots.length > 1) html += `<div class="fgroup" role="radiogroup" aria-label="colour"><span class="flabel">colour</span>${dots.join('')}</div>`;
       // pulldowns, in the order of config.json "filters"; prices from low to high
       this.lists = {};
-      for (const f of S.filters || []) {
+      for (const f of S.collections[key].filters || []) {
         const have = present(f.key);
         const values = f.values.filter((v) => have.has(v)).concat([...have].filter((v) => !f.values.includes(v)));
         if (f.key === 'price') values.sort((a, b) => a - b);
@@ -522,7 +537,7 @@
         html += `<label class="fgroup"><span class="flabel">${esc(f.label)}</span><select class="fsel" data-key="${esc(f.key)}">` +
           `<option value="">all</option>${values.map((v, i) => `<option value="${i}">${esc(fmt(v))}</option>`).join('')}</select></label>`;
       }
-      if (!html) return;
+      if (!html) return false;
       this.bar.innerHTML = html + '<div class="fstatus" hidden><span class="fcount"></span><button type="button" class="fclear">show all</button></div>';
       this.bar.addEventListener('click', (e) => {
         const b = e.target.closest('button');
@@ -541,15 +556,15 @@
         this.apply();
       });
       this.bar.hidden = false;
-      this.empty = this.bar.parentElement.querySelector('.filter-empty');
+      this.empty = $(`.filter-empty[data-for="${key}"]`);
+      return true;
     },
     match(it) {
       if (this.color === MULTI ? !it.multi : this.color && it.color !== this.color) return false;
       return Object.entries(this.pick).every(([k, v]) => it[k] === v);
     },
-    shows(section, it) { return section !== 'collection' || this.match(it); },
     apply() {
-      const sec = Grid.sections.collection;
+      const sec = Grid.sections[key];
       let n = 0;
       sec.thumbs.forEach((t, i) => { const ok = this.match(sec.items[i]); (t._cell || t).hidden = !ok; n += ok; });
       for (const b of $$('button[data-color]', this.bar)) b.setAttribute('aria-checked', b.dataset.color === this.color);
@@ -558,7 +573,7 @@
       if (this.empty) this.empty.hidden = n > 0;
       Grid.layout();
     },
-  };
+  });
 
   // ============================================================ menu
   const Menu = {
@@ -575,13 +590,13 @@
   };
 
   // ============================================================ #hash routing
-  // #collection / #story / ... -> scroll to that section
-  // #lisbon                     -> scroll to that product (by name) and open its detail pane
+  // #beanies / #my-story / ... -> scroll to that section
+  // #lisbon                     -> scroll to that product (by name, beanie or scarf) and open its detail pane
   // #DSC01606                   -> the same for a gallery picture (by file name)
   function route(initial) {
     const id = decodeURIComponent(location.hash.slice(1));
     if (!id) { Detail.close(false); return; }
-    for (const key of ['collection', 'gallery']) {
+    for (const key of [...SHOPS, 'gallery']) {
       const i = (S[key] || []).findIndex((x) => ref(x) === id);
       if (i >= 0) {
         const it = S[key][i];
@@ -602,7 +617,7 @@
   Splash.init();
   Menu.init();
   Grid.init();
-  Filter.init();
+  Filters.init();
   Detail.init();
   Cart.init();
   Shop.init();

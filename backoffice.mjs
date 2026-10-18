@@ -4,9 +4,10 @@
 //   node backoffice.mjs        start on http://localhost:8081 and open it in the browser
 //   options: --port=<n>  --no-open  --sources=<folder>
 //
-// Edits sources/collection.json: the order, the name, the attributes (sources/attributes.txt) and the colour
-// (measured from the photo, see lib/colors.mjs) of every collection photo. That is the only file it ever writes inside the sources folder. The "Build site"
-// button runs build.mjs; the built site is shown at /site/.
+// One tab per collection of config.json "collections" (beanies, scarves). Each edits its own sources/<key>.json:
+// the order, the name, the attributes (sources/<key>-attributes.txt) and the colour (measured from the photo, see
+// lib/colors.mjs) of every photo in sources/<key>. Those files are the only ones it ever writes inside the sources
+// folder. The "Build site" button runs build.mjs; the built site is shown at /site/.
 
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
@@ -17,7 +18,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 import {
-  COLLECTION_FILE, readAttributes, readCollection, mergeCollection, normalizeEntry, formatCollection, slugify,
+  collectionKeys, collectionFiles, readAttributes, readCollection, mergeCollection, normalizeEntry, formatCollection, slugify,
 } from './lib/collection.mjs';
 import { analyseColor } from './lib/colors.mjs';
 
@@ -29,31 +30,40 @@ const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'config.json'), 'utf8'));
 const SRC = path.resolve(ROOT, argVal('--sources') || cfg.sourcesDir);
 const OUT = path.resolve(ROOT, cfg.outDir);
 const CACHE = path.resolve(ROOT, cfg.cacheDir, 'backoffice');
-const PHOTOS = path.join(SRC, 'collection');
+const KEYS = collectionKeys(cfg);
 const UI = path.join(ROOT, 'backoffice');
 const PORT = Number(argVal('--port')) || 8081;
 const IMG_EXT = /\.(jpe?g|png|webp|tiff?)$/i;
 const THUMB_WIDTHS = [320, 960];
 const PALETTE = cfg.colors?.palette || [];
-const ANALYSIS = cfg.colors?.analysis || {};
 
 sharp.cache(false);
 
 const cities = fs.readFileSync(path.join(UI, 'cities.txt'), 'utf8').split(/\r?\n/)
   .map((s) => s.trim()).filter((s) => s && !s.startsWith('#'));
 
-function photos() {
-  if (!fs.existsSync(PHOTOS)) return [];
-  return fs.readdirSync(PHOTOS).filter((n) => IMG_EXT.test(n) && !n.startsWith('.'))
+const photosDir = (key) => path.join(SRC, collectionFiles(key).photos);
+/** where the colour is measured: config.json colors.analysis, with the collection's own colorAnalysis on top */
+const analysis = (key) => ({ ...(cfg.colors?.analysis || {}), ...(cfg.collections[key].colorAnalysis || {}) });
+
+function photos(key) {
+  const dir = photosDir(key);
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir).filter((n) => IMG_EXT.test(n) && !n.startsWith('.'))
     .sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
 }
 
 /** section links of the site (#beanies, #my-story …, the "# Title" lines of site.md): a product name must not take one */
-function reservedSlugs() {
+function sectionSlugs() {
   const c = cfg.content || {};
   const file = path.join(SRC, c.folder || 'content', c.file || 'site.md');
   const ids = fs.existsSync(file) ? [...fs.readFileSync(file, 'utf8').matchAll(/^#[ \t]+(.+?)[ \t#]*$/gm)].map((m) => slugify(m[1])) : [];
-  return [...new Set(['intro', 'home', 'beanies', 'scarves', 'gallery', ...ids])];
+  return [...new Set(['intro', 'home', 'gallery', ...KEYS, ...ids])];
+}
+
+/** the names of the other collections (with their pieces whose photo is gone): a name is a link, unique on the whole site */
+function otherNames(key) {
+  return KEYS.filter((k) => k !== key).flatMap((k) => readCollection(SRC, k).map((e) => slugify(e.name || ''))).filter(Boolean);
 }
 
 function pickName(used) {
@@ -74,12 +84,12 @@ async function pool(items, n, fn) {
 }
 
 /** measure the colour of these entries (sets color, multi, hex; a colour set by hand is no longer by hand) */
-async function detectColors(entries) {
+async function detectColors(key, entries) {
   if (!entries.length || !PALETTE.length) return;
-  console.log(`Measuring the colour of ${entries.length} photo${entries.length > 1 ? 's' : ''}…`);
+  console.log(`Measuring the colour of ${entries.length} ${key} photo${entries.length > 1 ? 's' : ''}…`);
   let done = 0;
   await pool(entries, 4, async (e) => {
-    const r = await analyseColor(path.join(PHOTOS, e.file), PALETTE, ANALYSIS);
+    const r = await analyseColor(path.join(photosDir(key), e.file), PALETTE, analysis(key));
     Object.assign(e, { color: r.color, multi: r.multi, hex: r.hex });
     delete e.colorByHand;
     if (++done % 20 === 0) console.log(`  ${done}/${entries.length}`);
@@ -96,36 +106,36 @@ function cleanColor(e) {
   return out;
 }
 
-// ---------------------------------------------------------------- collection.json
+// ---------------------------------------------------------------- <key>.json
 /** current state; new photos get the default attributes, a free city name and their colour, and are saved straight away */
-async function load() {
-  const attrs = readAttributes(SRC);
-  const saved = readCollection(SRC);
-  const { items, added, orphans } = mergeCollection(saved, photos(), attrs);
-  const used = new Set([...reservedSlugs(), ...saved.map((e) => slugify(e.name || '')).filter(Boolean)]);
+async function load(key) {
+  const attrs = readAttributes(SRC, key);
+  const saved = readCollection(SRC, key);
+  const { items, added, orphans } = mergeCollection(saved, photos(key), attrs);
+  const used = new Set([...sectionSlugs(), ...otherNames(key), ...saved.map((e) => slugify(e.name || '')).filter(Boolean)]);
   const unnamed = items.filter((e) => !e.name);
   for (const e of unnamed) e.name = pickName(used);
   const unmeasured = items.filter((e) => !e.hex);
-  await detectColors(unmeasured);
-  if (added.length || unnamed.length || unmeasured.length) await save(items, orphans, attrs);
+  await detectColors(key, unmeasured);
+  if (added.length || unnamed.length || unmeasured.length) await save(key, items, orphans, attrs);
   return { attrs, items, orphans };
 }
 
 /** atomic write (tmp + rename), with the previous version kept in the cache folder */
-async function save(items, orphans, attrs) {
-  const file = path.join(SRC, COLLECTION_FILE);
+async function save(key, items, orphans, attrs) {
+  const file = path.join(SRC, collectionFiles(key).data);
   const text = formatCollection([...items, ...orphans.map((e) => normalizeEntry(e, attrs))]);
   await fsp.mkdir(CACHE, { recursive: true });
   if (fs.existsSync(file)) {
     if (fs.readFileSync(file, 'utf8') === text) return;
-    await fsp.copyFile(file, path.join(CACHE, 'collection.previous.json'));
+    await fsp.copyFile(file, path.join(CACHE, `${key}.previous.json`));
   }
   await fsp.writeFile(file + '.tmp', text);
   await fsp.rename(file + '.tmp', file);
 }
 
 /** check the list sent by the page; returns an error message or null */
-function validate(items, photoSet, reserved) {
+function validate(items, photoSet, sections, others) {
   if (!Array.isArray(items)) return 'expected a list of items';
   const files = new Set(items.map((e) => e && e.file));
   if (files.size !== items.length) return 'a photo is listed twice';
@@ -136,7 +146,8 @@ function validate(items, photoSet, reserved) {
     if (!e || !photoSet.has(e.file)) return `unknown photo: ${e && e.file}; reload the page`;
     const slug = slugify(e.name || '');
     if (!slug) return `${e.file} has no name`;
-    if (reserved.has(slug)) return `"${e.name}" is the name of a section of the site`;
+    if (sections.has(slug)) return `"${e.name}" is the name of a section of the site`;
+    if (others.has(slug)) return `"${e.name}" is already the name of a piece in another collection`;
     if (seen.has(slug)) return `"${e.name}" is used twice (${seen.get(slug)} and ${e.file})`;
     seen.set(slug, e.file);
   }
@@ -144,11 +155,11 @@ function validate(items, photoSet, reserved) {
 }
 
 // ---------------------------------------------------------------- thumbnails
-async function thumb(name, w) {
-  const abs = path.join(PHOTOS, path.basename(name));
+async function thumb(key, name, w) {
+  const abs = path.join(photosDir(key), path.basename(name));
   if (!IMG_EXT.test(abs) || !fs.existsSync(abs)) return null;
   const st = fs.statSync(abs);
-  const out = path.join(CACHE, 'thumbs', `${crypto.createHash('sha1').update(`${name}|${st.size}|${st.mtimeMs}`).digest('hex').slice(0, 12)}-${w}.webp`);
+  const out = path.join(CACHE, 'thumbs', `${crypto.createHash('sha1').update(`${key}/${name}|${st.size}|${st.mtimeMs}`).digest('hex').slice(0, 12)}-${w}.webp`);
   if (!fs.existsSync(out)) {
     await fsp.mkdir(path.dirname(out), { recursive: true });
     // keepIccProfile: a Display P3 photo keeps its colours (sharp would convert it to sRGB)
@@ -210,49 +221,57 @@ async function handle(req, res) {
   // only this page may change things: a web page elsewhere must not be able to post to localhost
   if (req.method !== 'GET' && req.headers.origin !== `http://${req.headers.host}`) { res.writeHead(403); return res.end('forbidden'); }
 
+  // every /api/ call is about one collection: ?c=beanies (the first collection when it is left out)
+  const key = url.searchParams.get('c') || KEYS[0];
+  if (p.startsWith('/api/') && p !== '/api/build' && !KEYS.includes(key)) return sendJson(res, 400, { error: `unknown collection: ${key}` });
+
   if (req.method === 'GET' && p === '/api/state') {
-    const s = await load();
+    const s = await load(key);
     return sendJson(res, 200, {
+      key, collections: KEYS, files: collectionFiles(key),
       attrs: s.attrs, items: s.items, cities,
       palette: PALETTE.map((p) => ({ name: p.name, hex: p.hex })), multiLabel: cfg.colors?.multiLabel || 'multicolour',
-      taken: [...reservedSlugs(), ...s.orphans.map((e) => slugify(e.name || '')).filter(Boolean)],
+      taken: [...sectionSlugs(), ...otherNames(key), ...s.orphans.map((e) => slugify(e.name || '')).filter(Boolean)],
       currency: cfg.shop.currency, locale: cfg.shop.locale,
     });
   }
   if (req.method === 'PUT' && p === '/api/collection') {
     const body = await readBody(req);
-    const attrs = readAttributes(SRC);
-    const { orphans } = mergeCollection(readCollection(SRC), photos(), attrs);
+    const attrs = readAttributes(SRC, key);
+    const { orphans } = mergeCollection(readCollection(SRC, key), photos(key), attrs);
     const orphanSlugs = orphans.map((e) => slugify(e.name || '')).filter(Boolean);
-    const err = validate(body.items, new Set(photos()), new Set([...reservedSlugs(), ...orphanSlugs]));
+    const err = validate(body.items, new Set(photos(key)), new Set([...sectionSlugs(), ...orphanSlugs]), new Set(otherNames(key)));
     if (err) return sendJson(res, 400, { error: err });
     const items = body.items.map((e) => {
       const { color, multi, hex, colorByHand, ...rest } = e;
       return { ...normalizeEntry(rest, attrs), ...cleanColor(e) };
     });
-    await save(items, orphans, attrs);
+    await save(key, items, orphans, attrs);
     return sendJson(res, 200, { ok: true });
   }
   if (req.method === 'POST' && p === '/api/detect') {
     // measure one photo again; the page decides what to do with the result
     const { file } = await readBody(req);
-    if (!photos().includes(file)) return sendJson(res, 400, { error: `unknown photo: ${file}` });
-    const r = await analyseColor(path.join(PHOTOS, file), PALETTE, ANALYSIS);
+    if (!photos(key).includes(file)) return sendJson(res, 400, { error: `unknown photo: ${file}` });
+    const r = await analyseColor(path.join(photosDir(key), file), PALETTE, analysis(key));
     return sendJson(res, 200, { color: r.color, multi: r.multi, hex: r.hex });
   }
   if (req.method === 'POST' && p === '/api/detect-all') {
     // measure every photo again, except the ones whose colour was set by hand
-    const s = await load();
-    await detectColors(s.items.filter((e) => !e.colorByHand));
-    await save(s.items, s.orphans, s.attrs);
+    const s = await load(key);
+    await detectColors(key, s.items.filter((e) => !e.colorByHand));
+    await save(key, s.items, s.orphans, s.attrs);
     return sendJson(res, 200, { ok: true });
   }
   if (req.method === 'POST' && p === '/api/build') return runBuild(res);
 
   if (req.method !== 'GET') { res.writeHead(405); return res.end(); }
-  if (p.startsWith('/thumb/')) {
+  // /thumb/<collection>/<file>
+  const t = /^\/thumb\/([^/]+)\/(.+)$/.exec(p);
+  if (t) {
+    if (!KEYS.includes(t[1])) { res.writeHead(404); return res.end('not found'); }
     const w = THUMB_WIDTHS.includes(Number(url.searchParams.get('w'))) ? Number(url.searchParams.get('w')) : THUMB_WIDTHS[0];
-    return sendFile(res, await thumb(p.slice(7), w), 'max-age=31536000');
+    return sendFile(res, await thumb(t[1], t[2], w), 'max-age=31536000');
   }
   if (p === '/theme.css') { res.writeHead(200, { 'Content-Type': TYPES['.css'] }); return res.end(themeCss()); }
   if (p === '/sortable.js') return sendFile(res, path.join(ROOT, 'node_modules', 'sortablejs', 'Sortable.min.js'));
@@ -263,7 +282,8 @@ async function handle(req, res) {
 }
 
 if (!fs.existsSync(SRC)) { console.error(`sources folder not found: ${SRC}`); process.exit(1); }
-try { await load(); } catch (e) { console.error('\n' + e.message); process.exit(1); }
+if (!KEYS.length) { console.error('config.json has no "collections"'); process.exit(1); }
+try { for (const k of KEYS) await load(k); } catch (e) { console.error('\n' + e.message); process.exit(1); }
 
 http.createServer((req, res) => {
   handle(req, res).catch((e) => {
@@ -272,6 +292,6 @@ http.createServer((req, res) => {
   });
 }).listen(PORT, '127.0.0.1', () => {
   const url = `http://localhost:${PORT}/`;
-  console.log(`Backoffice for ${SRC}\n  -> ${url}   (Ctrl+C to stop)`);
+  console.log(`Backoffice for ${SRC} (${KEYS.join(', ')})\n  -> ${url}   (Ctrl+C to stop)`);
   if (!argv.includes('--no-open') && process.platform === 'win32') spawn('cmd', ['/c', 'start', '', url], { detached: true, stdio: 'ignore' }).unref();
 });
