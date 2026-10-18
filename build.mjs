@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// Uri Eugenio webshop — static site generator (phase 1)
+// Uri Eugenio webshop — static site generator
 //
 //   node build.mjs            build / update dist/ (only changed objects are regenerated)
 //   node build.mjs --clean    throw away dist/ and the cache, then build from scratch
 //   node build.mjs --serve    build, then serve dist/ on http://localhost:8080
 //   node build.mjs --serve --lan   the same, and on the local network for a phone (the addresses are printed)
-//   node build.mjs --publish  (phase 2) build and push changed objects to Cloudflare Pages
+//   node build.mjs --publish  build, then upload the changed objects to the Cloudflare Worker (wrangler.jsonc)
 //   options: --sources=<folder>  --out=<folder>   (override config.json)
 //
 // Everything under the sources folder is only READ, never written.
@@ -16,6 +16,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import http from 'node:http';
 import os from 'node:os';
+import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 import { marked } from 'marked';
@@ -623,8 +624,27 @@ async function main() {
   if (man.changed.length && man.changed.length <= 15) man.changed.forEach((f) => log(`  + ${f}`));
   log(`\nOpen: ${path.join(OUT, 'index.html')}`);
 
-  if (args.has('--publish')) log('\n--publish: Cloudflare publishing is added in phase 2.');
+  if (args.has('--publish')) await publish();
   if (args.has('--serve')) serve(Number(argVal('--port')) || 8080, args.has('--lan'));
+}
+
+// ---------------------------------------------------------------- publish (phase 2)
+// Uploads dist to the Cloudflare Worker in wrangler.jsonc. Wrangler compares a hash of every file with what is already
+// online and uploads only new and changed files; files no longer in dist disappear from the site.
+// Sign-in: "npx wrangler login" once (stored in your Windows profile), or CLOUDFLARE_API_TOKEN in code\.env.
+async function publish() {
+  const envFile = path.join(ROOT, '.env');
+  if (fs.existsSync(envFile) && typeof process.loadEnvFile === 'function') process.loadEnvFile(envFile);
+  const wrangler = path.join(ROOT, 'node_modules', 'wrangler', 'bin', 'wrangler.js');
+  if (!fs.existsSync(wrangler)) throw new Error('wrangler is not installed: run "npm install" in the code folder');
+  const deployArgs = [wrangler, 'deploy'];
+  // wrangler.jsonc publishes ../build/dist; follow --out= when it points elsewhere
+  if (OUT !== path.resolve(ROOT, cfg.outDir)) deployArgs.push('--assets', OUT);
+  log('\nPublishing to Cloudflare…');
+  const code = await new Promise((resolve) => {
+    spawn(process.execPath, deployArgs, { cwd: ROOT, stdio: 'inherit' }).on('close', resolve);
+  });
+  if (code !== 0) throw new Error(`publishing failed (wrangler exited with ${code}); see its message above`);
 }
 
 main().catch((e) => { console.error('\nBUILD FAILED:', e.stack || e); process.exit(1); });

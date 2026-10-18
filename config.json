@@ -139,6 +139,6 @@
     "liveInventory": false,
     "apiBase": "",
     "pollSeconds": 60,
-    "previewSoldIds": ["DSC01460", "DSC01475", "DSC01499"]
+    "previewSoldIds": []
   }
 }

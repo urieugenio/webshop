@@ -23,5 +23,8 @@
     "pdf-lib": "^1.17.1",
     "sharp": "^0.35.4",
     "sortablejs": "^1.15.6"
+  },
+  "devDependencies": {
+    "wrangler": "^4.151.1"
   }
 }

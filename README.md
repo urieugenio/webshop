@@ -9,6 +9,7 @@ The generator only **reads** the sources folder; it refuses to write anything in
 D:\Webshop\
 ├── code\      ← this folder: the git repository (github.com/urieugenio/webshop)
 │   ├── build.mjs, config.json, package.json, run.bat
+│   ├── wrangler.jsonc, publish.bat   the Cloudflare Worker that serves the site (see 6)
 │   ├── backoffice.mjs, backoffice.bat, backoffice\   the editor of the beanies and the scarves (see 4a)
 │   ├── booklet.mjs, scarf-sticker.mjs, story-booklet.mjs   the printed cards and booklet for the boxes (see 4b–4c)
 │   ├── lib\       generator modules
@@ -107,7 +108,7 @@ How "only what changed" works:
 - every photo keeps a fixed **slot** on the thumbnail sheets (`build\cache\slots-*.json`). Adding or removing a photo only rebuilds the sheet that holds that slot; all other sheets stay byte-identical;
 - text files (`index.html`, css, js, data) are only rewritten when their content changes;
 - files that no longer belong to the site are removed from `dist`;
-- `build\cache\dist-manifest.json` keeps a hash of every published object. Phase 2 uses it to upload only the difference to Cloudflare.
+- `build\cache\dist-manifest.json` keeps a hash of every published object; the build prints what changed since the last run. Publishing (**6**) uploads only the difference to Cloudflare.
 
 ## 3. Viewing the site from disk (Chrome)
 
@@ -359,38 +360,32 @@ All tunables are in `config.json`, and the front-end reads them from the generat
 | `colors.palette` | the filter colours: `name`, the `hex` shown on the site, and optional `refs`: example colours that count as this colour (a measured colour gets the name of the nearest example). Add a reference colour when a kind of beanie lands in the wrong colour |
 | `colors.multiLabel` | the word for multicoloured pieces ("multicolour") |
 | `colors.analysis` | where the colour is measured (fractions of the photo: left, top, right, bottom) and `multiDelta`: how different the two colours must be for "multicolour". Lower = more pieces count as multicolour (18.3 was calibrated on the first photos) |
-| `shop.previewSoldIds` | **phase 1 only**: these items are shown as sold so you can judge the "sold" band. Empty the list when going live |
-| `shop.liveInventory` | phase 2: switch on to read the inventory from Cloudflare D1 every `pollSeconds` |
+| `shop.previewSoldIds` | only while `liveInventory` is off: these items are shown as sold, to judge the "sold" band. Empty (`[]`) on the published site |
+| `shop.liveInventory` | phase 3: switch on to read the inventory from Cloudflare D1 every `pollSeconds` |
 
 Changing tile sizes or quality simply generates new files on the next run; the old ones are cleaned up.
 
 ---
 
-## 6. Phase 2 — what I need from Cloudflare
+## 6. Publishing to Cloudflare (`publish.bat`)
 
-**An API token (custom token) plus your Account ID.**
+The site runs as a Cloudflare **Worker** with static assets, on the free plan, at **https://uri.fashion** (and at
+`uri-fashion.<account>.workers.dev`). `wrangler.jsonc` describes it: its name, the folder it serves (`..\build\dist`)
+and the domain. The cache rules come from `dist\_headers`, which the build writes.
 
-1. Log in at https://dash.cloudflare.com.
-2. Copy your **Account ID**: Workers & Pages → Overview, right-hand column (or the URL: `dash.cloudflare.com/<account-id>/…`).
-3. Click your profile icon (top right) → **My Profile** → **API Tokens** → **Create Token**.
-4. Scroll to **Custom token** → **Get started**.
-5. Token name: `urieugenio-webshop-deploy`.
-6. Permissions (each one is a row: *Account* · *permission* · *Edit/Read*):
-   - **Account · Cloudflare Pages · Edit**: create the project and upload the site
-   - **Account · D1 · Edit**: create the product/order database and run its migrations
-   - **Account · Account Settings · Read**: lets the deploy tool look up the account
-   - only if you want to attach your own domain (e.g. shop.uri.eu) from the script: **Zone · DNS · Edit**, with the zone restricted to that domain under *Zone Resources*. Otherwise leave this out; you can attach a domain by hand in the dashboard.
-7. Account Resources: **Include · your account** (not "All accounts").
-8. Client IP filtering and TTL: leave empty, or set an end date if you prefer.
-9. **Continue to summary** → **Create Token** → copy the token. It is shown only once.
+**Once: sign in.** In a terminal in `D:\Webshop\code` run `npx wrangler login`. A browser opens; sign in to
+Cloudflare and click **Allow**. The sign-in is kept in your Windows profile, not in the repository.
+(Instead of signing in you can put `CLOUDFLARE_API_TOKEN=…` and `CLOUDFLARE_ACCOUNT_ID=…` in `code\.env`, which git
+ignores. The token needs **Account · Workers Scripts · Edit**, **Account · Account Settings · Read** and, for the
+domain, **Zone · Workers Routes · Edit** and **Zone · DNS · Edit** on uri.fashion.)
 
-Don't paste the token into a file in `sources` or into `config.json`. In phase 2 the script reads it from a local
-file `code\.env` (listed in `.gitignore`, so it never reaches GitHub) or from the environment variable `CLOUDFLARE_API_TOKEN`.
+**Every time:** double-click **`publish.bat`** (or `node build.mjs --publish`). It builds the site and uploads it.
+Wrangler compares a hash of every file with what is already online, so only new and changed files are uploaded; a
+run without changes uploads nothing. Photos removed from `sources` disappear from the site.
 
-The Pages Functions run inside the Pages project, so you don't need a separate Workers permission. The database binding
-and the Stripe secrets are set on the Pages project by the script.
-
-Also tell me the project name you want (it becomes `<name>.pages.dev`, e.g. `urieugenio`) and whether a custom domain is coming.
+Free plan limits, far above what the site needs: unlimited visits to the static files, 20,000 files per site
+(the site has about 770), 25 MiB per file. Phase 3 adds a small script for `/api/…` (inventory and checkout), which
+gets 100,000 requests a day for free.
 
 ## 7. Phase 3 — what I need from Stripe (sandbox)
 
@@ -410,7 +405,7 @@ In the Stripe dashboard, with the **sandbox / test mode** switch on:
    - links to your terms / privacy / return policy pages (I can make simple pages for these)
 
 How "first come, first served" will work: everyone can put the same piece in their cart. When someone presses
-*checkout*, the Pages Function checks D1, reserves the piece for 30 minutes and creates the Stripe Checkout Session
+*checkout*, the Worker checks D1, reserves the piece for 30 minutes and creates the Stripe Checkout Session
 (which expires at the same moment). Anyone else trying to check out the same piece in that window is told it is
 being bought. The webhook marks it **sold** when payment completes, or releases it when the session expires.
 All open pages pick up the change within a minute through the inventory poll.

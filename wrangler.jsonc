@@ -1,0 +1,16 @@
+// Cloudflare Worker that serves the site (phase 2). Published by "node build.mjs --publish" (or publish.bat).
+// Only static files for now: everything in build\dist, with the cache rules from dist\_headers.
+// Phase 3 adds a "main" script here for /api/... (inventory and Stripe checkout).
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "uri-fashion",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "../build/dist"
+  },
+  // the site is also reachable on <name>.<account>.workers.dev
+  "workers_dev": true,
+  "routes": [
+    { "pattern": "uri.fashion", "custom_domain": true }
+  ]
+}
