@@ -290,6 +290,30 @@
     },
   };
 
+  // ============================================================ admin: selling at the market from a phone
+  // A phone signed in at /api/admin/login has the admin_ui cookie: the piece view then shows "mark as sold" (or
+  // "undo sale"). The cookie only shows the button; the Worker checks the real (HttpOnly) admin cookie.
+  const Admin = {
+    on: () => Shop.live && /(?:^|;\s*)admin_ui=1(?:;|$)/.test(document.cookie),
+    async toggle(it, sold) {
+      if (!confirm(sold ? `Undo the sale of ${label(it)}? It will be for sale again.` : `Mark ${label(it)} as sold?`)) return;
+      const status = (t) => { const s = $('.status', Detail.info); if (s) s.textContent = t; };
+      status('one moment…');
+      try {
+        const r = await fetch(Shop.api(sold ? '/api/admin/undo' : '/api/admin/sold'), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: it.id }) });
+        const j = await r.json().catch(() => ({}));
+        if (r.status === 401) {
+          document.cookie = 'admin_ui=; Max-Age=0; Path=/';
+          Detail.refreshInfo();
+          return status('signed out: sign in again at /api/admin/login');
+        }
+        await Shop.refresh();
+        status(r.ok ? (sold ? 'for sale again' : 'marked as sold') : j.error || 'that did not work');
+      } catch { status('no connection: try again'); }
+    },
+  };
+
   // shipping costs: a copy of shippingQuote() in lib/shipping.mjs, which the Worker charges; this only shows them
   const Ship = {
     T: S.shipping,
@@ -596,7 +620,9 @@
             ${sold ? 'sold' : inCart ? 'in your cart ✓' : 'add to cart'}</button>
           ${Cart.ids.length ? `<button class="btn-basket" type="button" aria-label="open the cart">${BASKET}<span class="cart-count">${Cart.ids.length}</span></button>` : ''}
         </div>` : ''}
-        <p class="status"></p>`;
+        <p class="status"></p>
+        ${Admin.on() && it.price != null ? `<button class="btn-admin" type="button">${sold ? 'undo sale' : 'mark as sold'}</button>` : ''}`;
+      $('.btn-admin', this.info)?.addEventListener('click', () => Admin.toggle(it, sold));
       const btn = $('.btn-cart', this.info);
       // "in your cart ✓" and the basket next to it (once the cart has something): the cart slides in over this page,
       // closing it comes back here

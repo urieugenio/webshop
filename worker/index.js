@@ -6,11 +6,16 @@
 //   POST /api/checkout           { ids, country, previous? } -> reserves the pieces, returns the Stripe Checkout url
 //   POST /api/checkout/cancel    { hold } -> the buyer came back without paying: frees the pieces at once
 //   POST /api/stripe-webhook     Stripe tells us a checkout was paid, failed or expired
+//   GET  /api/admin/login        a form for the admin key; POST checks it and signs this phone in for a year
+//   POST /api/admin/logout       signs this phone out
+//   POST /api/admin/sold         { id } -> sold at the market, without Stripe
+//   POST /api/admin/undo         { id } -> a market sale was a mistake: available again (online sales stay sold)
 //
 // First come, first served: a checkout reserves its pieces for as long as its Stripe session is open (30 minutes).
 // Whoever tries to buy a reserved piece in that time is told it is being bought. Payment marks the pieces sold;
 // an expired, cancelled or failed checkout makes them available again.
-// Secrets (wrangler secret put): STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET. Locally: code\.dev.vars.
+// A market sale is an order with status 'market' (session NULL, no shipping); its pieces have hold 'market:<uuid>'.
+// Secrets (wrangler secret put): STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, ADMIN_KEY. Locally: code\.dev.vars.
 
 import { shippingQuote } from '../lib/shipping.mjs';
 
@@ -34,6 +39,11 @@ export default {
         case 'POST /api/checkout': return await checkout(req, env, url);
         case 'POST /api/checkout/cancel': return await cancel(req, env);
         case 'POST /api/stripe-webhook': return await webhook(req, env);
+        case 'GET /api/admin/login': return loginPage();
+        case 'POST /api/admin/login': return await login(req, env);
+        case 'POST /api/admin/logout': return logout();
+        case 'POST /api/admin/sold': return await admin(req, env, url, markSold);
+        case 'POST /api/admin/undo': return await admin(req, env, url, undoSale);
       }
       if (url.pathname.startsWith('/api/')) return json({ error: 'not found' }, 404);
       return env.ASSETS.fetch(req);
@@ -229,10 +239,109 @@ async function verifySignature(payload, header, secret) {
     else if (k === 'v1') sigs.push(v);
   }
   if (!t || Math.abs(now() - t) > 300) return false;
+  const expected = await hmac(secret, `${t}.${payload}`);
+  return sigs.some((sig) => same(sig, expected));
+}
+
+async function hmac(secret, text) {
   const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  const expected = hex(await crypto.subtle.sign('HMAC', key, enc.encode(`${t}.${payload}`)));
-  return sigs.some((sig) => sig.length === expected.length &&
-    [...sig].reduce((d, c, i) => d | (c.charCodeAt(0) ^ expected.charCodeAt(i)), 0) === 0);
+  return hex(await crypto.subtle.sign('HMAC', key, enc.encode(text)));
+}
+
+/** compares in constant time, so the time taken says nothing about how much of a secret was right */
+const same = (a, b) => typeof a === 'string' && typeof b === 'string' && a.length === b.length &&
+  [...a].reduce((d, c, i) => d | (c.charCodeAt(0) ^ b.charCodeAt(i)), 0) === 0;
+
+// ---------------------------------------------------------------- admin: selling at the market from a phone
+// Signing in sets two cookies for a year. "admin" (HttpOnly, only sent to /api/admin) proves it: an HMAC of the
+// admin key, so changing ADMIN_KEY signs every phone out. "admin_ui" is readable by the site and only tells it to
+// show the admin buttons; it grants nothing. Set by the server, so Safari keeps them (it wipes script-made storage
+// after 7 days without a visit).
+const ADMIN_DAYS = 365;
+const adminToken = (env) => hmac(env.ADMIN_KEY, 'uri.fashion admin cookie');
+const cookie = (req, name) => (req.headers.get('Cookie') || '').split(/;\s*/).find((c) => c.startsWith(name + '='))?.slice(name.length + 1);
+
+function setAdminCookies(headers, token, maxAge) {
+  headers.append('Set-Cookie', `admin=${token}; Max-Age=${maxAge}; Path=/api/admin; HttpOnly; Secure; SameSite=Strict`);
+  headers.append('Set-Cookie', `admin_ui=${maxAge ? 1 : ''}; Max-Age=${maxAge}; Path=/; Secure; SameSite=Strict`);
+}
+
+function loginPage(message = '', status = 200) {
+  return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
+<title>Admin</title><style>
+body{font:17px/1.4 system-ui,sans-serif;margin:0;padding:48px 20px;background:#f6f4f1;color:#222}
+form{max-width:340px;margin:auto;display:grid;gap:12px}
+input,button{font:inherit;padding:12px;border-radius:8px;border:1px solid #bbb}
+button{background:#222;color:#fff;border:0}.msg{color:#b00020;min-height:1.4em;margin:0}
+</style></head><body><form method="post" action="/api/admin/login">
+<h1>Admin</h1><p>Signs this phone in for a year to mark pieces as sold at the market.</p>
+<input type="hidden" name="username" value="admin" autocomplete="username">
+<input type="password" name="key" placeholder="admin key" autocomplete="current-password" required autofocus>
+<button>Sign in</button><p class="msg">${message}</p></form></body></html>`, {
+    status, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } });
+}
+
+async function login(req, env) {
+  if (!env.ADMIN_KEY) return loginPage('There is no admin key on the server yet (wrangler secret put ADMIN_KEY).', 503);
+  const key = String((await req.formData().catch(() => null))?.get('key') || '');
+  if (!same(key, env.ADMIN_KEY)) {
+    await new Promise((r) => setTimeout(r, 1000)); // slows down guessing
+    return loginPage('That is not the admin key.', 403);
+  }
+  const headers = new Headers({ Location: '/', 'Cache-Control': 'no-store' });
+  setAdminCookies(headers, await adminToken(env), ADMIN_DAYS * 24 * 3600);
+  return new Response(null, { status: 303, headers });
+}
+
+function logout() {
+  const headers = new Headers({ 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+  setAdminCookies(headers, '', 0);
+  return new Response('{"signedOut":true}', { headers });
+}
+
+/** checks the admin cookie and that the request comes from the site itself, then runs `action(env, id, url)` */
+async function admin(req, env, url, action) {
+  if (!env.ADMIN_KEY || !same(cookie(req, 'admin'), await adminToken(env))) return json({ error: 'signed out' }, 401);
+  if (req.headers.get('Origin') !== url.origin) return json({ error: 'wrong origin' }, 403);
+  const id = String((await req.json().catch(() => ({}))).id || '');
+  if (!(await catalog(env, url)).items[id]) return json({ error: 'no such piece' }, 404);
+  return action(env, id, url);
+}
+
+async function markSold(env, id, url) {
+  const row = await env.DB.prepare('SELECT status, hold, until FROM pieces WHERE id = ?1').bind(id).first();
+  if (row?.status === 'sold') return json({ error: 'this piece is already sold' }, 409);
+  if (row?.status === 'reserved' && row.until > now()) {
+    // someone is buying it online: their checkout ends here (all of it, as a checkout is all or nothing) ...
+    if (!(await cancelHold(env, row.hold))) {
+      // ... unless their payment is already underway
+      const order = await env.DB.prepare('SELECT status FROM orders WHERE hold = ?1').bind(row.hold).first();
+      if (order?.status === 'pending' || order?.status === 'paid' || order?.status === 'open') {
+        return json({ error: 'someone is paying for this piece online right now' }, 409);
+      }
+    }
+  }
+  const hold = 'market:' + crypto.randomUUID();
+  const cents = Math.round(((await catalog(env, url)).items[id].price || 0) * 100);
+  await env.DB.batch([
+    env.DB.prepare(`INSERT INTO pieces (id, status, hold, until) VALUES (?1, 'sold', ?2, NULL)
+      ON CONFLICT (id) DO UPDATE SET status = 'sold', hold = excluded.hold, until = NULL`).bind(id, hold),
+    env.DB.prepare(`INSERT INTO orders (hold, session, created, pieces, country, goods, shipping, total, status)
+      VALUES (?1, NULL, ?2, ?3, '', ?4, 0, ?4, 'market')`).bind(hold, now(), JSON.stringify([id]), cents),
+  ]);
+  return json({ id, sold: true });
+}
+
+async function undoSale(env, id) {
+  const row = await env.DB.prepare('SELECT status, hold FROM pieces WHERE id = ?1').bind(id).first();
+  if (row?.status !== 'sold') return json({ error: 'this piece is not sold' }, 409);
+  if (!row.hold.startsWith('market:')) return json({ error: 'this piece was sold online: refund it in Stripe instead' }, 409);
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM pieces WHERE id = ?1 AND hold = ?2').bind(id, row.hold),
+    env.DB.prepare("UPDATE orders SET status = 'undone' WHERE hold = ?1").bind(row.hold),
+  ]);
+  return json({ id, sold: false });
 }
 
 // ---------------------------------------------------------------- Stripe API (plain fetch: small and fast on the free plan)

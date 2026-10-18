@@ -21,7 +21,8 @@
     }
   ],
   // set online with "npx wrangler secret put <NAME>", locally in .dev.vars; a deploy refuses to go out without them
-  "secrets": { "required": ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"] },
+  // (ADMIN_KEY: the key for signing a phone in at /api/admin/login, see README 7)
+  "secrets": { "required": ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "ADMIN_KEY"] },
   "vars": {
     "SITE_URL": "https://uri.fashion"
   },

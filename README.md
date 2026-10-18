@@ -413,8 +413,9 @@ what was bought, the shipping line. Stripe emails you on every payment (Settings
 | `worker\index.js`, `worker\migrations\` | the Worker behind `/api/…` and the database tables |
 | `legal\*.md` | shipping, returns, terms and privacy pages. `{{business}}`, `{{address}}`, `{{kvk}}`, `{{email}}`, `{{vat}}`, `{{shipWithin}}`, `{{shippingTable}}` … are filled in from `config.json` (`site.business`, `site.contact`, `shop`) and `shipping.json`. To write your own version, copy the file to `sources\content\legal\` and edit it there: that copy wins. They are a careful starting point, not legal advice: read them once |
 
-**Secrets** (never in git): `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` are stored on the Worker
-(`npx wrangler secret put STRIPE_SECRET_KEY`); `wrangler.jsonc` lists them, so a publish fails if one is missing.
+**Secrets** (never in git): `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` and `ADMIN_KEY` (see *Selling at the
+market*) are stored on the Worker (`npx wrangler secret put STRIPE_SECRET_KEY`); `wrangler.jsonc` lists them, so a
+publish fails if one is missing, and `npm run dev` only reads the ones it lists from `.dev.vars`.
 For testing on this computer they are in `code\.dev.vars` (ignored by git).
 
 **Testing on this computer:** `npm run dev`, then open http://127.0.0.1:8788. It uses a local copy of the database
@@ -426,6 +427,24 @@ applies (above € 20,000 turnover a year in the Netherlands, or above € 10,00
 countries, after which their VAT applies), set up Stripe Tax (Stripe → Settings → Tax: your address and VAT
 registrations), set `"stripeTax": true` and publish. Prices stay what they are; the VAT is then taken out of them.
 Stripe Tax has its own fee per transaction.
+
+### Selling at the market (a phone signed in as admin)
+
+A phone signed in as admin gets a dashed **mark as sold** button under every piece on the site; on a sold piece it
+says **undo sale**. Nobody else sees it, and the Worker refuses the request without the admin cookie.
+
+1. Once: choose a long admin key (a password manager can make one) and store it on the Worker with
+   `npx wrangler secret put ADMIN_KEY`. Then run `publish.bat`.
+2. Once per phone: open `https://uri.fashion/api/admin/login`, type the key (let the phone remember it) and press
+   *Sign in*. The phone stays signed in for a year; sign in again when the button is gone.
+3. At the market: open the piece, tap **mark as sold**, confirm. Every open page shows it sold within a minute.
+
+- **Undo** only works for market sales. A piece sold online stays sold: refund it in Stripe instead.
+- If someone is in the middle of an online checkout for the piece, that checkout is ended (they see the piece sold
+  when they come back). If their payment is already underway (a bank debit), the button says so and does nothing.
+- A market sale is an order with status `market` (`undone` after an undo) in the D1 table `orders`, with the price
+  of the piece as its total.
+- Lost phone, or a key someone else may know: store a new `ADMIN_KEY`. That signs every phone out.
 
 ### Stripe dashboard settings
 

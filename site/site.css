@@ -225,6 +225,9 @@ main,.footer{max-width:calc(var(--page-max) + 2*var(--margin));margin:0 auto;pad
 .btn-basket svg{width:26px;height:26px}
 .btn-basket:hover{opacity:.8}
 .status{min-height:1.6em;margin:12px 0 0;font-size:13px;color:var(--muted)}
+/* only on a phone signed in as admin (see Admin in app.js): dashed, so it never passes for a shop button */
+.btn-admin{margin-top:16px;padding:9px 18px;border:1px dashed var(--muted);color:var(--muted);font-size:12px;
+  letter-spacing:.18em;text-transform:uppercase}
 .sold-tag{display:inline-block;margin-left:12px;padding:2px 10px;border:1px solid var(--accent);color:var(--accent);font-size:11px;letter-spacing:.25em;
   text-transform:uppercase;vertical-align:middle}
 @media (max-width:899px){
