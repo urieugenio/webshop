@@ -20,6 +20,8 @@
   const label = (it) => it.name || it.id;     // the product name, or the file name for gallery pictures
   const ref = (it) => it.slug || it.id;       // what goes after the # in the url
   const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+  // the shopping basket, the same as the cart button at the top of the page (lib/html.mjs)
+  const BASKET = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8h14l-1.2 12H6.2z"/><path d="M9 8V6.5a3 3 0 0 1 6 0V8"/></svg>';
 
   // ============================================================ splash
   const Splash = {
@@ -589,16 +591,19 @@
         <p class="ref">${esc(label(it))}</p>
         <p class="price">${it.price != null ? money(it.price) : ''}${sold ? '<span class="sold-tag">sold</span>' : ''}</p>
         ${rows.length ? `<dl>${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>` : ''}
-        ${it.price != null ? `<button class="btn-cart${sold ? ' is-sold' : inCart ? ' in-cart' : ''}" type="button" ${sold ? 'disabled' : ''}>
-          ${sold ? 'sold' : inCart ? 'in your cart ✓ · checkout' : 'add to cart'}</button>` : ''}
+        ${it.price != null ? `<div class="buy">
+          <button class="btn-cart${sold ? ' is-sold' : inCart ? ' in-cart' : ''}" type="button" ${sold || inCart ? 'disabled' : ''}>
+            ${sold ? 'sold' : inCart ? 'in your cart ✓' : 'add to cart'}</button>
+          ${Cart.ids.length ? `<button class="btn-basket" type="button" aria-label="open the cart">${BASKET}<span class="cart-count">${Cart.ids.length}</span></button>` : ''}
+        </div>` : ''}
         <p class="status"></p>`;
       const btn = $('.btn-cart', this.info);
-      // in the cart: the same button opens the cart over this page (closing it comes back here)
-      if (btn && !sold && inCart) btn.addEventListener('click', () => Cart.open());
+      // the basket next to it (once the cart has something): the cart slides in over this page, closing it comes back here
+      $('.btn-basket', this.info)?.addEventListener('click', () => Cart.open());
       if (btn && !sold && !inCart) btn.addEventListener('click', async () => {
         btn.classList.add('busy'); btn.disabled = true;
         const ok = await Shop.check(it.id);
-        if (ok) { Cart.add(it.id); this.refreshInfo(); $('.status', this.info).textContent = 'added — keep browsing, or tap the button to check out'; }
+        if (ok) { Cart.add(it.id); this.refreshInfo(); $('.status', this.info).textContent = 'added — you can keep browsing'; }
         else { this.refreshInfo(); $('.status', this.info).textContent = 'sorry, this piece has just been sold'; }
       });
     },
