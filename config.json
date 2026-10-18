@@ -15,6 +15,14 @@
       "instagram": "urieugenio",
       "website": "https://uri.eu",
       "websiteText": "dance videos and many more pictures"
+    },
+    "url": "https://uri.fashion",
+    "business": {
+      "name": "Uri Eugenio Handmade Crochet",
+      "kvk": "34336736",
+      "address": ["Hudsonstraat 53-3", "1057 RX Amsterdam", "Netherlands"],
+      "vatScheme": "kor",
+      "shipWithin": "3 working days"
     }
   },
 
@@ -136,9 +144,11 @@
   "shop": {
     "currency": "EUR",
     "locale": "nl-NL",
-    "liveInventory": false,
+    "liveInventory": true,
     "apiBase": "",
     "pollSeconds": 60,
+    "reserveMinutes": 30,
+    "stripeTax": false,
     "previewSoldIds": []
   }
 }

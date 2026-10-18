@@ -10,6 +10,7 @@ D:\Webshop\
 ├── code\      ← this folder: the git repository (github.com/urieugenio/webshop)
 │   ├── build.mjs, config.json, package.json, run.bat
 │   ├── wrangler.jsonc, publish.bat   the Cloudflare Worker that serves the site (see 6)
+│   ├── worker\, shipping.json, legal\   the checkout, the shipping costs, the legal pages (see 7)
 │   ├── backoffice.mjs, backoffice.bat, backoffice\   the editor of the beanies and the scarves (see 4a)
 │   ├── booklet.mjs, scarf-sticker.mjs, story-booklet.mjs   the printed cards and booklet for the boxes (see 4b–4c)
 │   ├── lib\       generator modules
@@ -361,7 +362,10 @@ All tunables are in `config.json`, and the front-end reads them from the generat
 | `colors.multiLabel` | the word for multicoloured pieces ("multicolour") |
 | `colors.analysis` | where the colour is measured (fractions of the photo: left, top, right, bottom) and `multiDelta`: how different the two colours must be for "multicolour". Lower = more pieces count as multicolour (18.3 was calibrated on the first photos) |
 | `shop.previewSoldIds` | only while `liveInventory` is off: these items are shown as sold, to judge the "sold" band. Empty (`[]`) on the published site |
-| `shop.liveInventory` | phase 3: switch on to read the inventory from Cloudflare D1 every `pollSeconds` |
+| `shop.liveInventory` | on: the site reads the inventory from Cloudflare D1 every `pollSeconds` and the checkout works (see **7**) |
+| `shop.reserveMinutes` | how long a checkout holds its pieces (Stripe's minimum is 30) |
+| `shop.stripeTax` | `false` under the KOR; `true` lets Stripe calculate the VAT included in the prices (see **7**) |
+| `site.url`, `site.business` | the address of the site, and the business details on the legal pages and in the footer: name, KvK number, address, `vatScheme`, `shipWithin` (how soon an order leaves) |
 
 Changing tile sizes or quality simply generates new files on the next run; the old ones are cleaned up.
 
@@ -384,28 +388,64 @@ Wrangler compares a hash of every file with what is already online, so only new 
 run without changes uploads nothing. Photos removed from `sources` disappear from the site.
 
 Free plan limits, far above what the site needs: unlimited visits to the static files, 20,000 files per site
-(the site has about 770), 25 MiB per file. Phase 3 adds a small script for `/api/…` (inventory and checkout), which
-gets 100,000 requests a day for free.
+(the site has about 770), 25 MiB per file. The script behind `/api/…` (inventory and checkout, see **7**) gets
+100,000 requests a day for free; the site uses a few per visitor.
 
-## 7. Phase 3 — what I need from Stripe (sandbox)
+## 7. The shop: checkout, shipping, legal pages
 
-In the Stripe dashboard, with the **sandbox / test mode** switch on:
+**How a sale works.** Everyone can put the same piece in their cart. In the cart the buyer chooses the country, sees
+the shipping costs and presses *checkout*. The Worker (`worker\index.js`) then reserves the pieces in the D1
+database for 30 minutes (`shop.reserveMinutes`), creates a Stripe Checkout session that expires at the same moment,
+and sends the buyer to Stripe's payment page. Anyone else trying to check out a reserved piece is told it is being
+bought. Stripe reports back to `https://uri.fashion/api/stripe-webhook`: paid → **sold**; expired, cancelled or
+failed → available again. A payment that takes days (a bank debit) keeps the pieces reserved until it succeeds or
+fails. All open pages pick up the change within a minute (`shop.pollSeconds`, only while the page is in view).
+Prices come from `dist\catalog.json`, which the build writes; the browser never sends a price.
 
-1. **Developers → API keys**:
-   - the **Publishable key** (`pk_test_…`)
-   - the **Secret key** (`sk_test_…`). For live mode later we'll create a **restricted key** with only *Checkout Sessions: Write* and *Events: Read*.
-2. The **webhook signing secret** (`whsec_…`) comes later: once the site is on Cloudflare, we add an endpoint
-   (Developers → Webhooks → Add endpoint) at `https://<your-site>/api/stripe-webhook` with the events
-   `checkout.session.completed`, `checkout.session.expired` and `checkout.session.async_payment_failed`.
-3. Business decisions I need from you:
-   - shipping: which countries, and the shipping cost (flat rate, free above an amount, per country?)
-   - payment methods: cards, iDEAL, Bancontact, PayPal, … (Settings → Payment methods)
-   - is VAT included in the prices (€ 180 incl. VAT?), and should Stripe Tax be used?
-   - the business name and statement descriptor customers see on their bank statement
-   - links to your terms / privacy / return policy pages (I can make simple pages for these)
+**Where the orders are.** In the Stripe dashboard → *Payments*: name, email, phone and delivery address of the buyer,
+what was bought, the shipping line. Stripe emails you on every payment (Settings → Notifications). The D1 table
+`orders` only keeps the status, the pieces and the amounts; no names or addresses.
 
-How "first come, first served" will work: everyone can put the same piece in their cart. When someone presses
-*checkout*, the Worker checks D1, reserves the piece for 30 minutes and creates the Stripe Checkout Session
-(which expires at the same moment). Anyone else trying to check out the same piece in that window is told it is
-being bought. The webhook marks it **sold** when payment completes, or releases it when the session expires.
-All open pages pick up the change within a minute through the inventory poll.
+| file | what |
+|---|---|
+| `shipping.json` | the PostNL rates per country (Klein Pakket met track & trace, January 2026), the weight per piece, the US surcharge (11 % of the order value for duties) and the countries never shipped to. Update it when PostNL publishes new rates |
+| `lib\shipping.mjs` | the shipping calculation (the Worker charges it, the cart shows a copy in `site\app.js`) |
+| `worker\index.js`, `worker\migrations\` | the Worker behind `/api/…` and the database tables |
+| `legal\*.md` | shipping, returns, terms and privacy pages. `{{business}}`, `{{address}}`, `{{kvk}}`, `{{email}}`, `{{vat}}`, `{{shipWithin}}`, `{{shippingTable}}` … are filled in from `config.json` (`site.business`, `site.contact`, `shop`) and `shipping.json`. To write your own version, copy the file to `sources\content\legal\` and edit it there: that copy wins. They are a careful starting point, not legal advice: read them once |
+
+**Secrets** (never in git): `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` are stored on the Worker
+(`npx wrangler secret put STRIPE_SECRET_KEY`); `wrangler.jsonc` lists them, so a publish fails if one is missing.
+For testing on this computer they are in `code\.dev.vars` (ignored by git).
+
+**Testing on this computer:** `npm run dev`, then open http://127.0.0.1:8788. It uses a local copy of the database
+and the Stripe sandbox. Pay with test card `4242 4242 4242 4242`, any future date, any CVC. Stripe cannot reach your
+computer, so a local test payment is never marked sold; test that on uri.fashion.
+
+**VAT.** `shop.stripeTax` is `false`: under the KOR no VAT is charged and the pages say so. When the KOR no longer
+applies (above € 20,000 turnover a year in the Netherlands, or above € 10,000 a year of sales to consumers in other EU
+countries, after which their VAT applies), set up Stripe Tax (Stripe → Settings → Tax: your address and VAT
+registrations), set `"stripeTax": true` and publish. Prices stay what they are; the VAT is then taken out of them.
+Stripe Tax has its own fee per transaction.
+
+### Stripe dashboard settings
+
+- **Settings → Business → Public details:** business name *Uri Eugenio Handmade Crochet*, statement descriptor (what
+  buyers see on their bank statement, e.g. `URI EUGENIO`), support email, website `https://uri.fashion`, and the links
+  `https://uri.fashion/terms/`, `/privacy/` and `/returns/`.
+- **Settings → Payment methods:** switch on everything you want to offer. **iDEAL** is off at the moment and is what
+  most Dutch buyers use; also PayPal, Revolut Pay, … Apple Pay and Google Pay come with cards.
+- **Settings → Branding:** logo and colours of the payment page.
+- **Settings → Customer emails:** send receipts for successful payments.
+
+### Going live
+
+1. Activate your Stripe account (business details, bank account), then switch the dashboard from sandbox to live and
+   repeat the settings above in live mode.
+2. Live API key: Developers → API keys. Store it with `npx wrangler secret put STRIPE_SECRET_KEY` (paste when asked).
+3. Live webhook: Developers → Webhooks → Add endpoint `https://uri.fashion/api/stripe-webhook` with the events
+   `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`
+   and `checkout.session.expired`. Store its signing secret with `npx wrangler secret put STRIPE_WEBHOOK_SECRET`.
+4. Remove the sandbox test sales from the database:
+   `npx wrangler d1 execute DB --remote --command "DELETE FROM pieces; DELETE FROM orders;"`
+5. Run `publish.bat`, and make one real purchase of a cheap piece to check the whole path.
+

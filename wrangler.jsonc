@@ -1,13 +1,31 @@
-// Cloudflare Worker that serves the site (phase 2). Published by "node build.mjs --publish" (or publish.bat).
-// Only static files for now: everything in build\dist, with the cache rules from dist\_headers.
-// Phase 3 adds a "main" script here for /api/... (inventory and Stripe checkout).
+// Cloudflare Worker that serves the site. Published by "node build.mjs --publish" (or publish.bat).
+// The static files (build\dist, with the cache rules from dist\_headers) are served without running any code;
+// only /api/... runs worker/index.js: the inventory and the Stripe checkout. Free plan.
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "uri-fashion",
+  "main": "worker/index.js",
   "compatibility_date": "2026-10-01",
   "assets": {
-    "directory": "../build/dist"
+    "directory": "../build/dist",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
   },
+  // inventory (reserved / sold) and orders; schema in worker/migrations
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "uri-fashion",
+      "database_id": "03321b1b-618e-4078-9b47-e500d9183d7f",
+      "migrations_dir": "worker/migrations"
+    }
+  ],
+  // set online with "npx wrangler secret put <NAME>", locally in .dev.vars; a deploy refuses to go out without them
+  "secrets": { "required": ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"] },
+  "vars": {
+    "SITE_URL": "https://uri.fashion"
+  },
+  "observability": { "enabled": true },
   // the site is also reachable on <name>.<account>.workers.dev
   "workers_dev": true,
   "routes": [

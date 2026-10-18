@@ -243,9 +243,38 @@ main,.footer{max-width:calc(var(--page-max) + 2*var(--margin));margin:0 auto;pad
 .cart-item .ci-sold{color:var(--accent);font-size:11px;letter-spacing:.2em;text-transform:uppercase}
 .ci-remove{display:block;margin:6px 0 0 auto;color:var(--muted);font-size:12px;letter-spacing:.1em}
 .ci-remove:hover{color:var(--text)}
-.cart-total{display:flex;justify-content:space-between;margin:20px 0 26px;font-size:17px;letter-spacing:.05em}
+.cart-foot{margin-top:22px}
+.cart-country{display:flex;align-items:center;justify-content:space-between;gap:14px;font-size:14px;color:var(--muted);letter-spacing:.05em}
+.cart-country select{flex:1;max-width:240px;padding:8px 30px 8px 10px;border:1px solid var(--line);border-radius:0;background:var(--surface)
+  url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238f8f8f' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")
+  no-repeat right 8px center/14px;color:var(--text);font:inherit;font-size:14px;appearance:none;-webkit-appearance:none}
+.cart-country select:focus{outline:1px solid var(--accent);outline-offset:0}
+.cart-line{display:flex;justify-content:space-between;gap:14px;margin:16px 0 0;font-size:14px;color:var(--muted)}
+.cart-total{display:flex;justify-content:space-between;margin:14px 0 22px;padding-top:12px;border-top:1px solid var(--line);font-size:17px;letter-spacing:.05em}
 .cart-empty{color:var(--muted)}
-.cart-note{margin-top:14px;font-size:12px;color:var(--muted)}
+.cart-msg{margin:0 0 18px;padding:10px 12px;border-left:2px solid var(--accent);background:var(--surface);font-size:14px;line-height:1.5}
+.cart-note{margin-top:14px;font-size:12px;line-height:1.6;color:var(--muted)}
+.cart-note a{color:var(--muted)}
+.cart-note a:hover{color:var(--text)}
+
+/* ---------------------------------------------------------------- footer links, legal pages */
+.legal-links{display:flex;flex-wrap:wrap;gap:6px 22px;margin:0 0 12px}
+.legal-links a{color:var(--muted);text-decoration:none;letter-spacing:.12em}
+.legal-links a:hover{color:var(--text)}
+.footer p{margin:0}
+.page-legal main{padding-top:40px;padding-bottom:20px}
+.page-legal .prose{max-width:760px;line-height:1.65}
+.page-legal .prose h1{margin:28px 0 24px;font-size:38px;color:var(--accent);text-shadow:1px 1px 2px rgba(33,33,33,.5)}
+.page-legal .prose ol{margin:0 0 1em;padding-left:1.4em}
+.page-legal .prose blockquote{margin:0 0 1em;padding:4px 18px;border-left:2px solid var(--line);color:var(--muted)}
+.back-home{color:var(--muted);text-decoration:none;font-size:13px;letter-spacing:.12em}
+.back-home:hover{color:var(--text)}
+.ship-table{width:100%;margin:8px 0 24px;border-collapse:collapse;font-size:14px}
+.ship-table th{text-align:left;font-weight:400;color:var(--muted);letter-spacing:.06em}
+.ship-table th,.ship-table td{padding:7px 10px 7px 0;border-bottom:1px solid var(--line);vertical-align:top}
+.ship-table th+th,.ship-table td+td{text-align:right;white-space:nowrap}
+.ship-table small{display:block;color:var(--muted);font-size:12px}
+@media (max-width:600px){.page-legal .prose{padding:0 12px}.page-legal .back-home{margin-left:12px}}
 
 @media (prefers-reduced-motion:reduce){
   html{scroll-behavior:auto}

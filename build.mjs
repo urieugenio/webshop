@@ -21,7 +21,8 @@ import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 import { marked } from 'marked';
 import { collectionKeys, collectionFiles, readAttributes, readCollection, mergeCollection, slugify } from './lib/collection.mjs';
-import { renderIndex } from './lib/html.mjs';
+import { renderIndex, renderPage } from './lib/html.mjs';
+import { shippingCountries, ratesFor, piecesPerParcel } from './lib/shipping.mjs';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -479,6 +480,91 @@ async function buildContent() {
   return sections;
 }
 
+// ---------------------------------------------------------------- shop: shipping, the catalog the Worker sells from
+// shipping.json (code folder) holds the PostNL rates; the countries offered are worked out here.
+function loadShipping() {
+  const T = JSON.parse(fs.readFileSync(path.join(ROOT, 'shipping.json'), 'utf8'));
+  delete T._about;
+  T.countries = shippingCountries(T);
+  if (!T.countries.includes('NL')) log('  ! shipping.json has no rate for NL: the Netherlands is not offered at checkout');
+  log(`  shipping to ${T.countries.length} countries`);
+  return T;
+}
+
+// dist/catalog.json: what the Worker sells, read by it after every deploy. Prices come from here, never from the browser.
+async function writeCatalog(collections, items, shipping) {
+  const pieces = {};
+  for (const [key, list] of Object.entries(items)) {
+    for (const it of list) {
+      if (it.price == null) continue;
+      pieces[it.id] = { name: it.name || it.id, price: it.price, collection: key, image: it.d[0].src,
+        desc: collections[key].attrs.map((a) => it[a.key]).filter(Boolean).join(' · ') };
+    }
+  }
+  const shop = { currency: cfg.shop.currency, reserveMinutes: cfg.shop.reserveMinutes || 30, stripeTax: !!cfg.shop.stripeTax };
+  await writeIfChanged('catalog.json', JSON.stringify({ shop, shipping, items: pieces }));
+}
+
+// ---------------------------------------------------------------- legal pages (shipping, returns, terms, privacy)
+// The text is code\legal\<page>.md, unless sources\content\legal\<page>.md exists: then that one is used.
+// {{name}} in the text is filled in from config.json (site.business, site.contact, shop) and shipping.json.
+const LEGAL = ['shipping', 'returns', 'terms', 'privacy'];
+
+function shippingTable(T) {
+  const names = new Intl.DisplayNames(['en'], { type: 'region' });
+  const eur = (n) => new Intl.NumberFormat(cfg.shop.locale, { style: 'currency', currency: cfg.shop.currency }).format(n);
+  const per = piecesPerParcel(T);
+  const bandOf = (n) => T.bands.findIndex((max) => n * T.gramsPerPiece <= max);
+  const own = T.countries.filter((c) => T.rates[T.aliases[c] || c]);
+  const rows = own.map((c) => ({ c, name: names.of(c), r: ratesFor(T, c) })).sort((a, b) => a.name.localeCompare(b.name, 'en'));
+  const europe = T.countries.filter((c) => !own.includes(c) && T.europe.includes(c)).map((c) => names.of(c)).sort();
+  const row = (name, r, note = '') => `<tr><td>${name}${note}</td><td>${eur(r[bandOf(1)])}</td><td>${eur(r[bandOf(per)])}</td></tr>`;
+  const note = (c) => (T.surcharge[c] ? ` <small>+ ${T.surcharge[c].percentOfGoods} % of the order value for import duties and fees</small>` : '');
+  return `<table class="ship-table">
+<thead><tr><th>destination</th><th>1 piece</th><th>2–${per} pieces</th></tr></thead>
+<tbody>
+${rows.map((x) => row(x.name, x.r, note(x.c))).join('\n')}
+${row(`other countries in Europe <small>(${europe.join(', ')})</small>`, T.rates.otherEurope)}
+${row('all other countries', T.rates.otherWorld)}
+</tbody>
+</table>`;
+}
+
+async function buildLegal(css, fonts, shipping) {
+  const b = cfg.site.business || {};
+  const missing = ['name', 'kvk', 'address'].filter((k) => !b[k] || !String(b[k]).trim());
+  if (missing.length) log(`  ! config.json site.business has no ${missing.join(', ')}: the legal pages show [${missing.join('], [')}]`);
+  const T = shipping;
+  const regions = new Intl.DisplayNames(['en'], { type: 'region' });
+  const fill = {
+    business: b.name || '[name]',
+    address: (b.address || ['[address]']).join(', '),
+    kvk: b.kvk || '[kvk]',
+    email: cfg.site.contact.email,
+    site: cfg.site.url,
+    shipWithin: b.shipWithin || '3 working days',
+    reserveMinutes: cfg.shop.reserveMinutes || 30,
+    perParcel: piecesPerParcel(T),
+    vat: cfg.shop.stripeTax
+      ? 'All prices include VAT. The VAT is calculated at checkout for the country the order is delivered to.'
+      : 'Under the Dutch small business scheme (kleineondernemersregeling, KOR) we do not charge VAT; the prices are final.',
+    notShipped: T.exclude.map((c) => regions.of(c)).join(' and ') || 'none',
+    shippingTable: shippingTable(T),
+  };
+  const pages = LEGAL.map((key) => {
+    const own = path.join(SRC, cfg.content?.folder || 'content', 'legal', `${key}.md`);
+    return { key, file: fs.existsSync(own) ? own : path.join(ROOT, 'legal', `${key}.md`) };
+  }).filter((p) => fs.existsSync(p.file));
+  for (const p of pages) {
+    const md = (await fsp.readFile(p.file, 'utf8')).replace(/^﻿/, '')
+      .replace(/\{\{\s*(\w+)\s*\}\}/g, (m, k) => (k in fill ? fill[k] : (log(`  ! ${p.key}.md: unknown {{${k}}}`), m)));
+    const title = (md.match(/^#\s+(.+)$/m) || [null, p.key])[1].trim();
+    await writeIfChanged(`${p.key}/index.html`, renderPage({ cfg, css, fonts, title, body: marked.parse(md), legal: pages }));
+    log(`  ${p.key}/ "${title}"${p.file.startsWith(SRC) ? ' (from sources)' : ''}`);
+  }
+  return pages;
+}
+
 // ---------------------------------------------------------------- cleanup + report
 async function walk(dir, base = dir, acc = []) {
   if (!fs.existsSync(dir)) return acc;
@@ -595,18 +681,23 @@ async function main() {
   const css = await copyHashed(path.join(ROOT, 'site', 'site.css'), 'assets', 'site');
   const js = await copyHashed(path.join(ROOT, 'site', 'app.js'), 'assets', 'app');
 
+  log('Shop');
+  const shipping = loadShipping();
+  await writeCatalog(collections, items, shipping);
+  const legal = await buildLegal(css, fonts, shipping);
+
   const publicCfg = {
     layout: cfg.layout, thumbs: { lazyMargin: cfg.thumbs.lazyMargin }, splash: { slideSeconds: cfg.splash.slideSeconds, fadeSeconds: cfg.splash.fadeSeconds },
     animation: cfg.animation, shop: cfg.shop, theme: cfg.theme,
   };
   // the items of a collection are under its key (SITE.beanies, SITE.scarves), like SITE.gallery
   const data = { config: publicCfg, splash, colors, collections, ...items, gallery: gallery.items,
-    sheets: { ...sheets, gallery: gallery.sheets } };
+    sheets: { ...sheets, gallery: gallery.sheets }, shipping, legal: legal.map((p) => p.key) };
   const dataJs = `window.SITE=${JSON.stringify(data)};\n`;
   const dataName = `data/site-${sha(dataJs, 8)}.js`;
   await writeIfChanged(dataName, dataJs);
 
-  const html = renderIndex({ cfg, logo, css, js, dataName, fonts, sections, splash });
+  const html = renderIndex({ cfg, logo, css, js, dataName, fonts, sections, splash, legal });
   await writeIfChanged('index.html', html);
   await writeIfChanged('_headers', [
     '/assets/*', '  Cache-Control: public, max-age=31536000, immutable',

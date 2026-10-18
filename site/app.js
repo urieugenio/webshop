@@ -244,20 +244,27 @@
 
   // ============================================================ shop: inventory + cart
   const Shop = {
-    sold: new Set(),
+    sold: new Set(), reserved: new Set(), last: 0,
     live: C.shop.liveInventory && location.protocol.startsWith('http'),
     api(p) { return (C.shop.apiBase || '') + p; },
     async init() {
       await this.refresh();
-      if (this.live) setInterval(() => this.refresh(), C.shop.pollSeconds * 1000);
+      if (!this.live) return;
+      // only while the page is in view: every poll is a request to the Worker (100,000 a day on the free plan)
+      setInterval(() => { if (!document.hidden) this.refresh(); }, C.shop.pollSeconds * 1000);
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && Date.now() - this.last > 15000) this.refresh();
+      });
     },
     async refresh() {
       if (!this.live) { this.sold = new Set(C.shop.previewSoldIds || []); return this.apply(); }
+      this.last = Date.now();
       try {
         const r = await fetch(this.api('/api/inventory'), { cache: 'no-store' });
         if (!r.ok) throw new Error(r.status);
         const j = await r.json();
         this.sold = new Set(j.sold || []);
+        this.reserved = new Set(j.reserved || []);
         this.apply();
       } catch (e) { console.warn('inventory refresh failed', e); }
     },
@@ -281,12 +288,44 @@
     },
   };
 
+  // shipping costs: a copy of shippingQuote() in lib/shipping.mjs, which the Worker charges; this only shows them
+  const Ship = {
+    T: S.shipping,
+    names: (() => { try { const n = new Intl.DisplayNames(['en'], { type: 'region' }); return (c) => n.of(c); } catch { return (c) => c; } })(),
+    offers(c) { return !!this.T && this.T.countries.includes(c); },
+    /** { cents, parcels, extra } for `pieces` pieces worth `goods` cents, or null */
+    quote(c, pieces, goods) {
+      const T = this.T;
+      if (!this.offers(c) || pieces < 1) return null;
+      const rates = T.rates[T.aliases[c] || c] || T.rates[T.europe.includes(c) ? 'otherEurope' : 'otherWorld'];
+      const per = Math.floor(T.maxParcelGrams / T.gramsPerPiece);
+      let cents = 0;
+      for (let left = pieces; left > 0; left -= per) {
+        const n = Math.min(left, per);
+        cents += Math.round(rates[T.bands.findIndex((max) => n * T.gramsPerPiece <= max)] * 100);
+      }
+      const extra = T.surcharge[c];
+      if (extra) cents += Math.round((goods * extra.percentOfGoods) / 100);
+      return { cents, parcels: Math.ceil(pieces / per), extra };
+    },
+    /** the visitor's country from the browser language (nl-NL -> NL), if we ship there */
+    guess() {
+      for (const l of navigator.languages || [navigator.language || '']) {
+        const m = /-([A-Z]{2})$/i.exec(l);
+        if (m && this.offers(m[1].toUpperCase())) return m[1].toUpperCase();
+      }
+      return '';
+    },
+  };
+
   const Cart = {
     ids: store.get('ue-cart', []),
+    country: store.get('ue-country', ''),
+    message: '', busy: false,
     has(id) { return this.ids.includes(id); },
     add(id) { if (!this.has(id)) { this.ids.push(id); this.save(); } },
     remove(id) { this.ids = this.ids.filter((x) => x !== id); this.save(); },
-    save() { store.set('ue-cart', this.ids); this.render(); },
+    save() { this.message = ''; store.set('ue-cart', this.ids); this.render(); },
     /** the piece with this id and its collection ({ key, i, it }), or null; ids are unique across the collections */
     find(id) {
       for (const key of SHOPS) {
@@ -304,6 +343,57 @@
       $('.cart-scrim').addEventListener('click', () => this.close());
       addEventListener('keydown', (e) => { if (e.key === 'Escape' && !Detail.isOpen) this.close(); });
       this.ids = this.ids.filter((id) => this.item(id));
+      if (!Ship.offers(this.country)) this.country = Ship.guess();
+      this.returnFromCheckout();
+      this.render();
+    },
+    /** back from Stripe: ?checkout=done (paid) or ?checkout=cancel&hold=… (came back without paying) */
+    returnFromCheckout() {
+      const q = new URLSearchParams(location.search);
+      const back = q.get('checkout');
+      if (!back) return;
+      history.replaceState(null, '', location.pathname + location.hash);
+      store.set('ue-hold', null);
+      if (back === 'done') {
+        this.ids = [];
+        store.set('ue-cart', this.ids);
+        this.message = 'Thank you for your order! You will receive a confirmation by email.';
+      } else {
+        // frees the pieces at once instead of after the reservation time
+        if (q.get('hold')) fetch(Shop.api('/api/checkout/cancel'), { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hold: q.get('hold') }) }).then(() => Shop.refresh()).catch(() => {});
+        this.message = 'Payment cancelled. Your pieces are still in your cart.';
+      }
+      setTimeout(() => this.open(), 120); // after the first paint, so the pane slides in
+    },
+    async checkout() {
+      const ids = this.ids.filter((id) => !Shop.sold.has(id));
+      if (!ids.length || !this.country || this.busy) return;
+      this.busy = true; this.message = ''; this.render();
+      try {
+        const r = await fetch(Shop.api('/api/checkout'), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids, country: this.country, previous: store.get('ue-hold', null) }),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (r.ok && j.url) { store.set('ue-hold', j.hold); location.href = j.url; return; }
+        if (r.status === 409) {
+          const names = (list) => list.map((id) => label(this.item(id))).join(', ');
+          (j.sold || []).forEach((id) => Shop.sold.add(id));
+          (j.reserved || []).forEach((id) => Shop.reserved.add(id));
+          this.message = [
+            j.sold?.length && `Sold in the meantime: ${names(j.sold)}. Remove it to continue.`,
+            j.reserved?.length && `Someone else is buying ${names(j.reserved)} right now. If they don't complete their payment, ` +
+              `it is available again within ${C.shop.reserveMinutes} minutes.`,
+          ].filter(Boolean).join(' ');
+          Shop.apply();
+        } else {
+          this.message = j.error ? j.error.charAt(0).toUpperCase() + j.error.slice(1) + '.' : 'Checkout is not available right now. Please try again in a moment.';
+        }
+      } catch {
+        this.message = 'No connection. Please try again.';
+      }
+      this.busy = false;
       this.render();
     },
     open() { Menu.close(); this.pane.classList.add('open'); this.pane.setAttribute('aria-hidden', 'false'); html.classList.add('locked', 'cart-open'); },
@@ -313,13 +403,14 @@
       this.btn.hidden = !this.ids.length;
       $('.cart-count', this.btn).textContent = this.ids.length;
       const list = $('.cart-list', this.pane);
-      if (!this.ids.length) { list.innerHTML = '<p class="cart-empty">your cart is empty</p>'; return; }
-      let total = 0;
+      const msg = this.message ? `<p class="cart-msg" role="status">${esc(this.message)}</p>` : '';
+      if (!this.ids.length) { list.innerHTML = msg + '<p class="cart-empty">your cart is empty</p>'; return; }
+      let total = 0, count = 0;
       list.innerHTML = '';
       for (const id of this.ids) {
         const { key, i, it } = this.find(id);
         const sold = Shop.sold.has(id);
-        if (!sold && it.price) total += it.price;
+        if (!sold && it.price) { total += it.price; count++; }
         const row = document.createElement('div');
         row.className = 'cart-item' + (sold ? ' is-sold' : '');
         row.innerHTML = `<button class="thumb loaded" type="button" aria-label="show ${esc(label(it))}"><span class="ti"></span></button>
@@ -335,10 +426,24 @@
         $('.ci-remove', row).addEventListener('click', () => this.remove(id));
         list.appendChild(row);
       }
+      const ship = Ship.quote(this.country, count, Math.round(total * 100));
+      const options = (Ship.T?.countries || []).map((c) => [c, Ship.names(c)]).sort((a, b) => a[1].localeCompare(b[1], 'en'))
+        .map(([c, n]) => `<option value="${c}"${c === this.country ? ' selected' : ''}>${esc(n)}</option>`).join('');
+      const shipLabel = !ship ? 'shipping' : `shipping${ship.parcels > 1 ? ` (${ship.parcels} parcels)` : ''}${ship.extra ? ', incl. import duties' : ''}`;
+      const ready = Shop.live && ship && count && !this.busy;
+      const legal = (S.legal || []).filter((k) => k !== 'privacy').map((k) => `<a href="${k}/">${k}</a>`).join(' · ');
       const foot = document.createElement('div');
-      foot.innerHTML = `<div class="cart-total"><span>total</span><span>${money(total)}</span></div>
-        <button class="btn-cart" type="button" disabled>checkout</button>
-        <p class="cart-note">Checkout will be available soon. Every piece is one of a kind: the first to complete payment gets it.</p>`;
+      foot.className = 'cart-foot';
+      foot.innerHTML = `<label class="cart-country"><span>ship to</span>
+          <select><option value="">choose your country</option>${options}</select></label>
+        <div class="cart-line"><span>${shipLabel}</span><span>${ship ? money(ship.cents / 100) : '—'}</span></div>
+        <div class="cart-total"><span>total</span><span>${money(total + (ship ? ship.cents / 100 : 0))}</span></div>
+        ${msg}
+        <button class="btn-cart btn-checkout${this.busy ? ' busy' : ''}" type="button"${ready ? '' : ' disabled'}>${this.busy ? 'one moment…' : 'checkout'}</button>
+        <p class="cart-note">${Shop.live ? '' : 'Checkout is only available on the website. '}Every piece is one of a kind: ` +
+          `the first to complete payment gets it.${legal ? `<br>${legal}` : ''}</p>`;
+      $('select', foot).addEventListener('change', (e) => { this.country = e.target.value; store.set('ue-country', this.country); this.message = ''; this.render(); });
+      $('.btn-checkout', foot).addEventListener('click', () => this.checkout());
       list.appendChild(foot);
     },
   };

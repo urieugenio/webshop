@@ -6,8 +6,10 @@ node_modules/
 .env.*
 !.env.example
 
-# Wrangler's local state (wrangler dev / deploy)
+# Wrangler's local state (wrangler dev / deploy), and the secrets for "wrangler dev"
 .wrangler/
+.dev.vars
+.dev.vars.*
 
 # Build output and cache live in ..\build, content in ..\content.
 # These lines are a safety net in case anything ends up inside the repo.
