@@ -184,7 +184,6 @@ main,.footer{max-width:calc(var(--page-max) + 2*var(--margin));margin:0 auto;pad
   background:rgba(20,20,20,.82);color:var(--accent);text-align:center;font-size:max(9px,7.5cqw);letter-spacing:.3em;text-indent:.3em;
   line-height:2.1;text-transform:uppercase;font-weight:400;pointer-events:none;border-top:1px solid rgba(255,255,255,.08);border-bottom:1px solid rgba(0,0,0,.6)}
 .thumb:not(.sold) .sold-band{display:none}
-.thumb.sold .ti{filter:saturate(.55) brightness(.8)}
 
 /* ---------------------------------------------------------------- detail pane */
 .detail .nav-prev,.detail .nav-next{position:absolute;z-index:4;top:50%;width:48px;height:72px;margin-top:-36px;display:grid;place-items:center;color:#fff;
