@@ -286,7 +286,7 @@ in `lib\print.mjs`.
 
 ### Scarf sticker (`scarf-sticker.mjs`)
 
-The scarf box is square: one **177 × 177 mm** sticker per scarf, with the same information as the beanie card. The
+One **191 × 182 mm** (wide × high) sticker per scarf box, with the same information as the beanie card. The
 photo fills the top half; below it the text is set on four columns (name; model, material, thickness, size; care over
 two columns, how to wear, stay in touch; thank you and the signature line).
 

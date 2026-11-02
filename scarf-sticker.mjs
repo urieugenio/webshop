@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Uri Eugenio webshop — printed sticker for the square box a scarf is sold in: 177 x 177 mm, one per scarf.
+// Uri Eugenio webshop — printed sticker for the box a scarf is sold in: 191 x 182 mm (w x h), one per scarf.
 // The same information as the beanie card (booklet.mjs): the photo in the top half, name, model, material,
 // thickness, size, care, how to wear, "stay in touch", a thank you with "Handmade in Amsterdam", and a line for
 // Uri's signature.
@@ -38,7 +38,7 @@ const OUT = path.resolve(ROOT, cfg.outDir, '..', 'print');
 const WEAR = 'Wear it loose, tucked into the loop, knotted at the neck, or improvise.';
 
 // ---------------------------------------------------------------- page geometry (mm, from the top-left of the trim)
-const TRIM = { w: 177, h: 177 };
+const TRIM = { w: 191, h: 182 };
 const BLEED = 5;
 const MARGIN = 14;                  // left / right text margin
 const COL = (TRIM.w - 2 * MARGIN) / 4; // the text is set on four columns
