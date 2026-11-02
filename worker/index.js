@@ -17,7 +17,7 @@
 // A market sale is an order with status 'market' (session NULL, no shipping); its pieces have hold 'market:<uuid>'.
 // Secrets (wrangler secret put): STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, ADMIN_KEY. Locally: code\.dev.vars.
 
-import { shippingQuote } from '../lib/shipping.mjs';
+import { shippingQuote, pickupQuote, PICKUP } from '../lib/shipping.mjs';
 
 const TAX_CODE_CLOTHING = 'txcd_30011000';
 const TAX_CODE_SHIPPING = 'txcd_92010001';
@@ -115,8 +115,10 @@ async function checkout(req, env, url) {
   const items = ids.map((id) => cat.items[id]);
   if (items.some((x) => !x || x.price == null)) return json({ error: 'a piece in your cart is no longer in the shop' }, 400);
   const goods = items.reduce((s, x) => s + Math.round(x.price * 100), 0);
-  const ship = cat.shipping.countries.includes(country) && shippingQuote(cat.shipping, country, ids.length, goods);
-  if (!ship) return json({ error: 'we do not ship to this country' }, 400);
+  const pickup = country === PICKUP; // collected in person: no shipping address
+  const ship = pickup ? pickupQuote(cat.shipping)
+    : cat.shipping.countries.includes(country) && shippingQuote(cat.shipping, country, ids.length, goods);
+  if (!ship) return json({ error: pickup ? 'local pickup is not offered' : 'we do not ship to this country' }, 400);
 
   // the same visitor trying again (back from Stripe without paying, or a changed cart): drop the earlier checkout first
   if (body.previous) await cancelHold(env, String(body.previous));
@@ -145,7 +147,7 @@ async function checkout(req, env, url) {
             tax_code: TAX_CODE_CLOTHING, metadata: { piece: ids[i] } },
         },
       })),
-      shipping_address_collection: { allowed_countries: [country] },
+      ...(pickup ? {} : { shipping_address_collection: { allowed_countries: [country] } }),
       shipping_options: [{ shipping_rate_data: {
         type: 'fixed_amount', display_name: ship.label, tax_behavior: 'inclusive', tax_code: TAX_CODE_SHIPPING,
         fixed_amount: { amount: ship.cents, currency: cat.shop.currency.toLowerCase() } } }],

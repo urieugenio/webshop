@@ -8,7 +8,8 @@
     "Countries not named get 'otherEurope' (the codes in 'europe') or 'otherWorld'. 'aliases' use another country's rates.",
     "'exclude': never offered (Russia and Belarus: EU sanctions). Places without postal delivery (Antarctica, …) never are.",
     "NL (domestic, not in the PDF): one price per parcel, given by Uri.",
-    "surcharge: added to the shipping cost, as a percentage of the value of the pieces."
+    "surcharge: added to the shipping cost, as a percentage of the value of the pieces.",
+    "pickup: 'local pickup' at the top of the cart's country list, for 'price' euro (no address asked). Remove it to stop offering it."
   ],
   "product": "PostNL Klein Pakket, tracked",
   "gramsPerPiece": 550,
@@ -62,5 +63,6 @@
   "exclude": ["RU", "BY"],
   "surcharge": {
     "US": { "percentOfGoods": 11, "label": "including US import duties and fees" }
-  }
+  },
+  "pickup": { "price": 0, "label": "Local pickup" }
 }

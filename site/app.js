@@ -318,11 +318,13 @@
   const Ship = {
     T: S.shipping,
     names: (() => { try { const n = new Intl.DisplayNames(['en'], { type: 'region' }); return (c) => n.of(c); } catch { return (c) => c; } })(),
-    offers(c) { return !!this.T && this.T.countries.includes(c); },
-    /** { cents, parcels, extra } for `pieces` pieces worth `goods` cents, or null */
+    PICKUP: 'PICKUP', // local pickup instead of a country (PICKUP in lib/shipping.mjs)
+    offers(c) { return !!this.T && (c === this.PICKUP ? !!this.T.pickup : this.T.countries.includes(c)); },
+    /** { cents, parcels, extra, pickup } for `pieces` pieces worth `goods` cents, or null */
     quote(c, pieces, goods) {
       const T = this.T;
       if (!this.offers(c) || pieces < 1) return null;
+      if (c === this.PICKUP) return { cents: Math.round(T.pickup.price * 100), parcels: 0, extra: null, pickup: true };
       const rates = T.rates[T.aliases[c] || c] || T.rates[T.europe.includes(c) ? 'otherEurope' : 'otherWorld'];
       const per = Math.floor(T.maxParcelGrams / T.gramsPerPiece);
       let cents = 0;
@@ -456,13 +458,15 @@
       const ship = Ship.quote(this.country, count, Math.round(total * 100));
       const options = (Ship.T?.countries || []).map((c) => [c, Ship.names(c)]).sort((a, b) => a[1].localeCompare(b[1], 'en'))
         .map(([c, n]) => `<option value="${c}"${c === this.country ? ' selected' : ''}>${esc(n)}</option>`).join('');
-      const shipLabel = !ship ? 'shipping' : `shipping${ship.parcels > 1 ? ` (${ship.parcels} parcels)` : ''}${ship.extra ? ', incl. import duties' : ''}`;
+      const pickup = Ship.offers(Ship.PICKUP)
+        ? `<option value="${Ship.PICKUP}"${this.country === Ship.PICKUP ? ' selected' : ''}>local pickup</option><option disabled>──────────</option>` : '';
+      const shipLabel = !ship ? 'shipping' : ship.pickup ? 'local pickup' : `shipping${ship.parcels > 1 ? ` (${ship.parcels} parcels)` : ''}${ship.extra ? ', incl. import duties' : ''}`;
       const ready = Shop.live && ship && count && !this.busy;
       const legal = (S.legal || []).filter((k) => k !== 'privacy').map((k) => `<a href="${k}/">${k}</a>`).join(' · ');
       const foot = document.createElement('div');
       foot.className = 'cart-foot';
       foot.innerHTML = `<label class="cart-country"><span>ship to</span>
-          <select><option value="">choose your country</option>${options}</select></label>
+          <select><option value="">choose your country</option>${pickup}${options}</select></label>
         <div class="cart-line"><span>${shipLabel}</span><span>${ship ? money(ship.cents / 100) : '—'}</span></div>
         <div class="cart-total"><span>total</span><span>${money(total + (ship ? ship.cents / 100 : 0))}</span></div>
         ${msg}

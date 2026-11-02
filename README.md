@@ -409,7 +409,7 @@ what was bought, the shipping line. Stripe emails you on every payment (Settings
 
 | file | what |
 |---|---|
-| `shipping.json` | the PostNL rates per country (Klein Pakket met track & trace, January 2026), the weight per piece, the US surcharge (11 % of the order value for duties) and the countries never shipped to. Update it when PostNL publishes new rates |
+| `shipping.json` | the PostNL rates per country (Klein Pakket met track & trace, January 2026), the weight per piece, the US surcharge (11 % of the order value for duties), the countries never shipped to, and `pickup`: *local pickup* at the top of the cart's country list, with its price; Stripe then asks no shipping address (remove `pickup` to stop offering it). Update it when PostNL publishes new rates |
 | `lib\shipping.mjs` | the shipping calculation (the Worker charges it, the cart shows a copy in `site\app.js`) |
 | `worker\index.js`, `worker\migrations\` | the Worker behind `/api/…` and the database tables |
 | `legal\*.md` | shipping, returns, terms and privacy pages. `{{business}}`, `{{address}}`, `{{kvk}}`, `{{email}}`, `{{vat}}`, `{{shipWithin}}`, `{{shippingTable}}` … are filled in from `config.json` (`site.business`, `site.contact`, `shop`) and `shipping.json`. To write your own version, copy the file to `sources\content\legal\` and edit it there: that copy wins. They are a careful starting point, not legal advice: read them once |
