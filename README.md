@@ -296,6 +296,10 @@ node scarf-sticker.mjs --photo=zoom            the other way to fill the photo a
 node scarf-sticker.mjs --only=Timoteo,Ripley   just these scarves
 ```
 
+Real dimensions of the stickers for the scarfs:
+top: 186mm wide, 180mm high
+bottom: 186mm wide, 177mm high
+
 The photos (from `scarves-print`, Adobe RGB) are square, the photo area is twice as wide as it is high:
 
 - **fill** (default): the whole scarf, with the dark backdrop extended to the left and right edges. The extension
